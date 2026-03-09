@@ -19,5 +19,40 @@
     "dax": "Employee Path = \nPATH(Employees[EmployeeID], Employees[ManagerID])",
     "attempts_taken": 2,
     "created_at": "2026-03-09T15:32:20.957750"
+  },
+  {
+    "id": 4,
+    "request": "total sales amount",
+    "dax": "Total Sales Amount = SUM(Sales[Amount])",
+    "attempts_taken": 1,
+    "created_at": "2026-03-09T19:41:08.779601"
+  },
+  {
+    "id": 5,
+    "request": "total room revenue",
+    "dax": "Total Room Revenue = SUM(Fact_DailyFlash[RoomRevenue])",
+    "attempts_taken": 1,
+    "created_at": "2026-03-09T20:59:25.589460"
+  },
+  {
+    "id": 6,
+    "request": "average ADR from Fact_DailyFlash",
+    "dax": "Average ADR = AVERAGE(Fact_DailyFlash[ADR])",
+    "attempts_taken": 1,
+    "created_at": "2026-03-09T20:59:56.447598"
+  },
+  {
+    "id": 7,
+    "request": "& C:/Users/v-krb/AppData/Local/Python/pythoncore-3.14-64/python.exe \"c:/Users/v-krb/OneDrive/Freelance Portugal 2026/Power BI - Claude Agent Platform/pbi-agent/dax_agent.py\"",
+    "dax": "Total Room Revenue = SUM(Fact_DailyFlash[RoomRevenue])",
+    "attempts_taken": 2,
+    "created_at": "2026-03-09T21:12:48.387185"
+  },
+  {
+    "id": 8,
+    "request": "total room revenue for the current year",
+    "dax": "Total Room Revenue CY = \nCALCULATE(\n    [Room Revenue],\n    FILTER(\n        ALL(DimDate[Date]),\n        YEAR(DimDate[Date]) = YEAR(TODAY())\n    )\n)",
+    "attempts_taken": 2,
+    "created_at": "2026-03-09T21:27:16.875783"
   }
 ]
