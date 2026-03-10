@@ -272,25 +272,26 @@ st.title("📊 Power BI DAX Agent")
 st.caption("Generate, validate and manage DAX measures for your Power BI model.")
 
 # ── Sidebar: Model Selector ───────────────────────────────────────────────────
+# ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.header("Model Settings")
-    
+    st.header("⚙️ Model Settings")
+
     model_path_input = st.text_input(
         "Path to model.bim file:",
         value=BIM_PATH,
         help="Paste the full path to your Power BI model.bim file"
     )
-    
+
     load_model_btn = st.button("Load Model", type="primary")
-    
+
     if load_model_btn:
         st.cache_resource.clear()
         st.session_state.model_path = model_path_input
         st.rerun()
-    
+
     if "model_path" not in st.session_state:
         st.session_state.model_path = BIM_PATH
-
+        
 st.divider()
 
 # Load model using path from session state
@@ -299,15 +300,41 @@ try:
     table_count = len(schema["tables"])
     rel_count = len(schema["relationships"])
     st.success(f"Model loaded — {table_count} tables, {rel_count} relationships.")
+
+    # Add model browser and search to sidebar now that schema is loaded
     with st.sidebar:
-        st.success("Model loaded successfully.")
-        st.caption(f"{table_count} tables found")
+        st.divider()
+        st.header("🔍 Measure Search")
+        search_term = st.text_input("Search library:", placeholder="e.g. revenue")
+        if search_term:
+            library = load_library()
+            results = [m for m in library if search_term.lower() in m["request"].lower()
+                      or search_term.lower() in m["dax"].lower()]
+            if results:
+                st.caption(f"{len(results)} match(es) found")
+                for m in results:
+                    with st.expander(f"#{m['id']} — {m['request'][:35]}"):
+                        st.code(m["dax"], language="dax")
+            else:
+                st.caption("No matches found.")
+
+        st.divider()
+        st.header("📋 Model Browser")
         for table in schema["tables"]:
-            st.caption(f"• {table['name']}")
+            with st.expander(f"{table['name']}"):
+                if table["columns"]:
+                    st.caption("Columns")
+                    for col in table["columns"]:
+                        st.markdown(f"- `{col['name']}` *{col['dataType']}*")
+                if table["measures"]:
+                    st.caption("Existing Measures")
+                    for m in table["measures"]:
+                        st.markdown(f"- `[{m['name']}]`")
+
 except Exception as e:
     st.error(f"Could not load model: {e}")
     st.stop()
-
+    
 st.divider()
 
 col1, col2 = st.columns([2, 1])
