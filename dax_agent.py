@@ -142,7 +142,15 @@ Here is the data model you must use:
             {"role": "user", "content": content}
         ]
     )
-    return message.content[0].text
+    raw = message.content[0].text
+# Strip markdown code fences if Claude added them
+raw = raw.strip()
+if raw.startswith("```"):
+    lines = raw.split("\n")
+    # Remove first line (```dax or ```) and last line (```)
+    lines = [l for l in lines if not l.strip().startswith("```")]
+    raw = "\n".join(lines).strip()
+return raw
 
 # ── Validators ────────────────────────────────────────────────────────────────
 
