@@ -40,8 +40,9 @@ if "duplicate_measure" not in st.session_state:
 # ── Model Inspector ───────────────────────────────────────────────────────────
 
 @st.cache_resource
-def load_model_context():
-    with open(BIM_PATH, "r", encoding="utf-8") as f:
+def load_model_context_from_path(bim_path):
+    """Load and format the Power BI model from a given path."""
+    with open(bim_path, "r", encoding="utf-8") as f:
         model = json.load(f)
 
     schema = {"tables": [], "relationships": []}
@@ -100,7 +101,6 @@ def load_model_context():
     lines.append("=== END OF MODEL ===")
 
     return "\n".join(lines), schema
-
 # ── Measure Library ───────────────────────────────────────────────────────────
 
 def load_library():
@@ -271,10 +271,39 @@ def run_agent(user_request, model_context, schema):
 st.title("📊 Power BI DAX Agent")
 st.caption("Generate, validate and manage DAX measures for your Power BI model.")
 
+# ── Sidebar: Model Selector ───────────────────────────────────────────────────
+with st.sidebar:
+    st.header("Model Settings")
+    
+    model_path_input = st.text_input(
+        "Path to model.bim file:",
+        value=BIM_PATH,
+        help="Paste the full path to your Power BI model.bim file"
+    )
+    
+    load_model_btn = st.button("Load Model", type="primary")
+    
+    if load_model_btn:
+        st.cache_resource.clear()
+        st.session_state.model_path = model_path_input
+        st.rerun()
+    
+    if "model_path" not in st.session_state:
+        st.session_state.model_path = BIM_PATH
+
+st.divider()
+
+# Load model using path from session state
 try:
-    model_context, schema = load_model_context()
+    model_context, schema = load_model_context_from_path(st.session_state.model_path)
     table_count = len(schema["tables"])
-    st.success(f"Model loaded — {table_count} tables found.")
+    rel_count = len(schema["relationships"])
+    st.success(f"Model loaded — {table_count} tables, {rel_count} relationships.")
+    with st.sidebar:
+        st.success("Model loaded successfully.")
+        st.caption(f"{table_count} tables found")
+        for table in schema["tables"]:
+            st.caption(f"• {table['name']}")
 except Exception as e:
     st.error(f"Could not load model: {e}")
     st.stop()
