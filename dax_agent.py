@@ -91,6 +91,38 @@ def load_library():
         with open(LIBRARY_FILE, "r") as f:
             return json.load(f)
     return []
+def check_for_duplicate(user_request, library):
+    """Check if a similar measure already exists in the library."""
+    if not library:
+        return None
+
+    # Format existing measures as a summary for Claude to review
+    existing = []
+    for entry in library:
+        existing.append(f"ID {entry['id']}: {entry['request']} => {entry['dax']}")
+    existing_text = "\n".join(existing)
+
+    message = client.messages.create(
+        model="claude-sonnet-4-5",
+        max_tokens=512,
+        system="""You are a Power BI measure library manager checking for duplicate measures.
+Two measure requests are duplicates if they are asking for the same business calculation,
+even if they use different wording. For example:
+- "room revenue this year" and "total room revenue for the current year" ARE duplicates
+- "total revenue" and "revenue this year" are NOT duplicates (different time scope)
+- "average ADR" and "total ADR" are NOT duplicates (different aggregation)
+
+Be aggressive about catching duplicates — if in doubt, flag it.
+
+Respond in this exact format and nothing else:
+DUPLICATE: <id number> — <one sentence explaining why it matches>
+or
+NEW: <one sentence explaining why no existing measure matches>""",
+        messages=[
+            {"role": "user", "content": f"New request: {user_request}\n\nExisting measures:\n{existing_text}"}
+        ]
+    )
+    return message.content[0].text
 
 def save_to_library(user_request, dax, attempts_taken):
     library = load_library()
@@ -228,6 +260,30 @@ def main():
         user_request = input("What DAX measure do you need? ").strip()
         if user_request.lower() == "quit":
             break
+
+        # Check for duplicates before generating anything
+        print("\n  Checking measure library for similar measures...")
+        library = load_library()
+        duplicate_result = check_for_duplicate(user_request, library)
+        print(f"  Library check: {duplicate_result}")
+
+        if duplicate_result and duplicate_result.startswith("DUPLICATE"):
+            try:
+                duplicate_id = int(duplicate_result.split(":")[1].strip().split("—")[0].strip())
+                existing_measure = next((m for m in library if m["id"] == duplicate_id), None)
+                if existing_measure:
+                    print(f"\n  Similar measure already exists in library.")
+                    print(f"\n  Existing DAX:")
+                    print(existing_measure["dax"])
+                    choice = input("\n  Use existing measure? (yes/no): ").strip().lower()
+                    if choice == "yes":
+                        print("  Using existing measure. No new measure generated.")
+                        print()
+                        continue
+                    else:
+                        print("  Proceeding with new generation anyway...")
+            except (ValueError, IndexError):
+                print("  Could not parse duplicate ID, proceeding with generation...")
 
         max_attempts = 3
         attempt = 1
