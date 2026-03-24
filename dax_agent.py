@@ -247,7 +247,7 @@ Data model for reference:
 
 def main():
     # Load the model
-    bim_path = r"C:\Users\v-krb\OneDrive\Freelance Portugal 2026\Power BI - Claude Agent Platform\pbi-agent\Model.bim"
+    bim_path = os.getenv("BIM_PATH", "Model.bim")
     print("\nReading model...")
     model = load_model(bim_path)
     schema = extract_schema(model)

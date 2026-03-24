@@ -207,7 +207,7 @@ def print_impact_report(graph, node_id):
 if __name__ == "__main__":
     import sys
 
-    bim_path = r"C:\Users\v-krb\OneDrive\Freelance Portugal 2026\Power BI - Claude Agent Platform\pbi-agent\Model.bim"
+    bim_path = os.getenv("BIM_PATH", "Model.bim")
 
     # Build and save the graph
     graph = build_graph_from_model(bim_path)

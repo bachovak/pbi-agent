@@ -1,3 +1,6 @@
 .env
 __pycache__/
 *.pyc
+Model.bim
+measure_library.json
+lineage.json

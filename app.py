@@ -10,7 +10,7 @@ load_dotenv()
 client = anthropic.Anthropic()
 
 LIBRARY_FILE = "measure_library.json"
-BIM_PATH = r"C:\Users\v-krb\OneDrive\Freelance Portugal 2026\Power BI - Claude Agent Platform\pbi-agent\Model.bim"
+BIM_PATH = os.getenv("BIM_PATH", "Model.bim")
 
 # ── Page Config ───────────────────────────────────────────────────────────────
 
