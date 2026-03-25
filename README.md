@@ -11,6 +11,7 @@ An AI-powered tool that generates, validates, and manages DAX measures for Power
 - **Measure library** — approved measures are saved and searchable
 - **Model-aware** — reads your `Model.bim` so it only uses tables and columns that actually exist
 - **Model sanitisation** — scans your model file for sensitive data before loading; nothing leaves your machine until you approve
+- **Lineage & impact analysis** — automatically builds a dependency graph on load; select any table or column to see every measure that depends on it
 - **Two interfaces** — Streamlit web UI or CLI
 
 ## Setup
@@ -96,7 +97,11 @@ python show_library.py
 
 Lists all measures saved in the library with their IDs and descriptions.
 
-### Build a lineage graph
+### Lineage and impact analysis (web UI)
+
+The lineage graph is built automatically when you approve and load a model. In the main UI, scroll down to the **Impact Analysis** section, select any table, column, or measure from the dropdown, and the tool shows every dependent object — with type, name, and relationship — so you know what would break before making a change. The sidebar also shows a summary of total nodes and edges by type.
+
+### Build a lineage graph (CLI)
 
 ```bash
 python lineage.py

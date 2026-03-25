@@ -102,13 +102,14 @@ Your browser will open automatically at `http://localhost:8501`.
 2. Choose your sanitisation settings — by default the tool will mask SQL connection strings, file paths, URLs, and email addresses before the model is loaded. You can also optionally mask GUIDs, remove RLS role definitions, and strip developer comments
 3. Click **Load Model** — the file is scanned locally on your machine; nothing is sent anywhere at this point
 4. A **Sanitisation Review** screen appears showing exactly what was found and redacted. If the model is clean, it will say so. Review the list and click **Approve and Load Model** to proceed, or **Cancel** to go back
-5. Once loaded, type your measure request in plain English, e.g.:
+5. The model loads and the **lineage graph is built automatically** in the background. You will see a Lineage section in the sidebar showing node and edge counts. Scroll down on the main page to find **Impact Analysis** — select any table, column, or measure to see everything that depends on it before making a change
+6. Type your measure request in plain English, e.g.:
    - `total room revenue for the current year`
    - `average daily rate by room type`
    - `number of bookings this month`
-6. Click **Generate DAX**
-7. The agent checks your library for duplicates, then generates and validates the DAX
-8. Review the output — click **Approve & Save** to add it to your library, or **Reject** to try again
+7. Click **Generate DAX**
+8. The agent checks your library for duplicates, then generates and validates the DAX
+9. Review the output — click **Approve & Save** to add it to your library, or **Reject** to try again
 
 ### Option B: Command line
 
@@ -138,13 +139,15 @@ python model_inspector.py
 
 Prints a full summary of tables, columns, and existing measures from your `Model.bim`. Run this first if you are unsure whether the agent can see your model correctly.
 
-### Build a lineage graph
+### Build a lineage graph (CLI)
 
 ```bash
 python lineage.py
 ```
 
 Analyses your model and generates a `lineage.json` file showing which measures depend on which columns and tables. Also prints an impact report — useful for understanding what breaks if you rename or remove a column.
+
+> In the web UI this happens automatically — no need to run this script separately unless you want the `lineage.json` file saved to disk.
 
 ---
 
