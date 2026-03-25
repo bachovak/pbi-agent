@@ -5,6 +5,7 @@ import os
 from datetime import datetime
 from dotenv import load_dotenv
 import sanitiser
+import lineage
 
 load_dotenv()
 
@@ -43,6 +44,8 @@ if "sanitised_content" not in st.session_state:
     st.session_state.sanitised_content = None
 if "sanitise_pending_approval" not in st.session_state:
     st.session_state.sanitise_pending_approval = False
+if "lineage_graph" not in st.session_state:
+    st.session_state.lineage_graph = None
 
 # ── Model Inspector ───────────────────────────────────────────────────────────
 
@@ -402,6 +405,9 @@ if st.session_state.sanitise_pending_approval and st.session_state.sanitise_repo
                 model_context, schema = load_model_context_from_string(content_hash, content)
                 st.session_state.model_context = model_context
                 st.session_state.schema = schema
+                st.session_state.lineage_graph = lineage.build_graph_from_model_dict(
+                    json.loads(content)
+                )
                 st.session_state.sanitise_pending_approval = False
                 st.rerun()
             except Exception as e:
@@ -457,6 +463,17 @@ try:
                     st.caption("Existing Measures")
                     for m in table["measures"]:
                         st.markdown(f"- `[{m['name']}]`")
+
+        if st.session_state.lineage_graph:
+            g = st.session_state.lineage_graph
+            node_types = {}
+            for node in g["nodes"].values():
+                node_types[node["type"]] = node_types.get(node["type"], 0) + 1
+            st.divider()
+            st.header("🔗 Lineage")
+            st.caption(f"{len(g['nodes'])} nodes · {len(g['edges'])} edges")
+            for ntype, count in sorted(node_types.items()):
+                st.caption(f"  {ntype}: {count}")
 
 except Exception as e:
     st.error(f"Could not load model: {e}")
@@ -568,3 +585,56 @@ with col2:
             with st.expander(f"#{entry['id']} — {entry['request'][:40]}"):
                 st.code(entry["dax"], language="dax")
                 st.caption(f"Saved: {entry['created_at'][:10]}")
+
+# ── Impact Analysis ────────────────────────────────────────────────────────────
+if st.session_state.lineage_graph:
+    st.divider()
+    st.subheader("Impact Analysis")
+    st.caption("Select a table or column to see what measures and objects depend on it.")
+
+    g = st.session_state.lineage_graph
+
+    # Build dropdown options: tables and columns only (the things measures depend on)
+    options = {}  # display label -> node_id
+    for node_id, node in sorted(g["nodes"].items(), key=lambda x: (x[1]["type"], x[1]["name"])):
+        if node["type"] == "table":
+            label = f"[Table]  {node['name']}"
+        elif node["type"] == "column":
+            table = node.get("metadata", {}).get("table", "")
+            label = f"[Column]  {table} → {node['name']}"
+        elif node["type"] == "measure":
+            table = node.get("metadata", {}).get("table", "")
+            label = f"[Measure]  {table} → {node['name']}"
+        else:
+            continue
+        options[label] = node_id
+
+    selected_label = st.selectbox(
+        "Select an object:",
+        options=["— select —"] + list(options.keys()),
+    )
+
+    if selected_label and selected_label != "— select —":
+        selected_node_id = options[selected_label]
+        impacts = lineage.impact_analysis(g, selected_node_id)
+
+        if not impacts:
+            st.success("No dependents found — this object is safe to change.")
+        else:
+            st.warning(f"{len(impacts)} object(s) would be affected by changes to this item.")
+            type_icon = {"measure": "📐", "column": "📋", "table": "🗂️"}
+            rel_label = {
+                "references_column": "uses column",
+                "references_measure": "uses measure",
+                "belongs_to": "belongs to",
+                "relates_to": "relates to",
+            }
+            for item in impacts:
+                indent = "&nbsp;" * (item["depth"] * 6)
+                icon = type_icon.get(item["type"], "•")
+                rel = rel_label.get(item["relationship"], item["relationship"])
+                st.markdown(
+                    f"{indent}{icon} **{item['name']}** "
+                    f"<span style='color:#78716C'>({item['type']} · {rel})</span>",
+                    unsafe_allow_html=True,
+                )

@@ -56,15 +56,12 @@ def extract_column_references(dax_expression):
     pattern = r"(\w+)\[([^\]]+)\]"
     return re.findall(pattern, dax_expression)
 
-def build_graph_from_model(bim_path):
-    """Build a lineage graph from a model.bim file."""
-    print(f"Building lineage graph from: {bim_path}")
-
-    with open(bim_path, "r", encoding="utf-8") as f:
-        model = json.load(f)
-
+def build_graph_from_model_dict(model_dict):
+    """Build a lineage graph from an already-parsed model dictionary.
+    Use this when working with sanitised content that has already been
+    parsed from JSON — no file reading, no disk access."""
     graph = create_empty_graph()
-    tables = model.get("model", {}).get("tables", [])
+    tables = model_dict.get("model", {}).get("tables", [])
 
     # Pass 1: Add all table and column nodes
     for table in tables:
@@ -72,11 +69,9 @@ def build_graph_from_model(bim_path):
         if table.get("isHidden") or table_name.startswith("DateTableTemplate"):
             continue
 
-        # Add table node
         table_id = f"table::{table_name}"
         add_node(graph, table_id, "table", table_name)
 
-        # Add column nodes
         for col in table.get("columns", []):
             if col.get("type") == "calculated":
                 continue
@@ -86,7 +81,6 @@ def build_graph_from_model(bim_path):
                 "table": table_name,
                 "dataType": col.get("dataType", "unknown")
             })
-            # Column belongs to table
             add_edge(graph, col_id, table_id, "belongs_to")
 
     # Pass 2: Add measure nodes and their dependencies
@@ -108,21 +102,18 @@ def build_graph_from_model(bim_path):
                 "expression": expr
             })
 
-            # Find column references in the DAX
             refs = extract_column_references(expr)
             for ref_table, ref_col in refs:
-                # Check if it references a column
                 col_id = f"column::{ref_table}::{ref_col}"
                 if col_id in graph["nodes"]:
                     add_edge(graph, measure_id, col_id, "references_column")
 
-                # Check if it references another measure
                 measure_ref_id = f"measure::{ref_table}::{ref_col}"
                 if measure_ref_id in graph["nodes"]:
                     add_edge(graph, measure_id, measure_ref_id, "references_measure")
 
     # Pass 3: Add relationship edges between tables
-    relationships = model.get("model", {}).get("relationships", [])
+    relationships = model_dict.get("model", {}).get("relationships", [])
     for rel in relationships:
         from_table = rel.get("fromTable")
         to_table = rel.get("toTable")
@@ -136,6 +127,14 @@ def build_graph_from_model(bim_path):
             add_edge(graph, from_col_id, to_col_id, "relates_to")
 
     return graph
+
+
+def build_graph_from_model(bim_path):
+    """Build a lineage graph from a model.bim file path."""
+    print(f"Building lineage graph from: {bim_path}")
+    with open(bim_path, "r", encoding="utf-8") as f:
+        model = json.load(f)
+    return build_graph_from_model_dict(model)
 
 # ── Impact Analysis ───────────────────────────────────────────────────────────
 
