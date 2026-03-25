@@ -97,15 +97,18 @@ streamlit run app.py
 Your browser will open automatically at `http://localhost:8501`.
 
 **How to use it:**
-1. The sidebar shows your model loaded automatically from `BIM_PATH`
-2. If you want to load a different model, paste the path in the sidebar and click **Load Model**
-3. Type your measure request in plain English, e.g.:
+
+1. Paste the path to your `Model.bim` file in the sidebar (or leave it as the default from `BIM_PATH`)
+2. Choose your sanitisation settings — by default the tool will mask SQL connection strings, file paths, URLs, and email addresses before the model is loaded. You can also optionally mask GUIDs, remove RLS role definitions, and strip developer comments
+3. Click **Load Model** — the file is scanned locally on your machine; nothing is sent anywhere at this point
+4. A **Sanitisation Review** screen appears showing exactly what was found and redacted. If the model is clean, it will say so. Review the list and click **Approve and Load Model** to proceed, or **Cancel** to go back
+5. Once loaded, type your measure request in plain English, e.g.:
    - `total room revenue for the current year`
    - `average daily rate by room type`
    - `number of bookings this month`
-4. Click **Generate DAX**
-5. The agent checks your library for duplicates, then generates and validates the DAX
-6. Review the output — click **Approve & Save** to add it to your library, or **Reject** to try again
+6. Click **Generate DAX**
+7. The agent checks your library for duplicates, then generates and validates the DAX
+8. Review the output — click **Approve & Save** to add it to your library, or **Reject** to try again
 
 ### Option B: Command line
 
@@ -212,7 +215,10 @@ If configured correctly, it will print the datasets available in your workspace.
 ## Troubleshooting
 
 **`ANTHROPIC_API_KEY not found` or authentication error**
-Make sure your `.env` file is in the project root folder (same folder as `app.py`) and the key is correctly pasted with no extra spaces.
+Make sure your `.env` file is in the project root folder (same folder as `app.py`) and the key is correctly pasted with no extra spaces. If you cloned the repo, the `.env` file is not included — copy `.env.example` to `.env` and fill in your values.
+
+**`Failed to parse sanitised model` error after approving**
+This should not happen with a valid `Model.bim` file. If it does, try turning off the **Remove developer comments** toggle and loading again — some non-standard files may contain comment-like patterns in unexpected places.
 
 **`Cannot find model file` or model not loading**
 Check that `BIM_PATH` in your `.env` points to the exact location of your `Model.bim` file. On Windows, use either forward slashes (`C:/path/to/Model.bim`) or escaped backslashes (`C:\\path\\to\\Model.bim`).

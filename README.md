@@ -10,6 +10,7 @@ An AI-powered tool that generates, validates, and manages DAX measures for Power
 - **Duplicate detection** — flags if a similar measure already exists in the library
 - **Measure library** — approved measures are saved and searchable
 - **Model-aware** — reads your `Model.bim` so it only uses tables and columns that actually exist
+- **Model sanitisation** — scans your model file for sensitive data before loading; nothing leaves your machine until you approve
 - **Two interfaces** — Streamlit web UI or CLI
 
 ## Setup
@@ -61,7 +62,7 @@ Export it from Tabular Editor: **File → Save As** and save as `Model.bim`. Poi
 streamlit run app.py
 ```
 
-Opens in your browser. Use the sidebar to load your model and search the measure library. Type your request and click **Generate DAX**. Review the output and click **Approve & Save** to add it to the library.
+Opens in your browser. Paste your `Model.bim` path in the sidebar, configure sanitisation options, and click **Load Model**. The sanitiser scans the file locally and shows you a review screen — no data leaves your machine at this point. Click **Approve and Load Model** to proceed. Then type your measure request and click **Generate DAX**. Review the output and click **Approve & Save** to add it to the library.
 
 ### CLI agent (full, model-aware)
 
@@ -122,6 +123,7 @@ This is optional — you can also copy generated DAX manually into Tabular Edito
 | File | Purpose |
 |---|---|
 | `app.py` | Streamlit web UI |
+| `sanitiser.py` | Model sanitisation module (called by `app.py`) |
 | `dax_agent.py` | Full CLI agent (model-aware, with library) |
 | `hello_agent.py` | Simple CLI agent (no model context) |
 | `model_inspector.py` | Reads and prints your model schema |

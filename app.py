@@ -4,6 +4,7 @@ import json
 import os
 from datetime import datetime
 from dotenv import load_dotenv
+import sanitiser
 
 load_dotenv()
 
@@ -36,15 +37,17 @@ if "duplicate_result" not in st.session_state:
     st.session_state.duplicate_result = None
 if "duplicate_measure" not in st.session_state:
     st.session_state.duplicate_measure = None
+if "sanitise_report" not in st.session_state:
+    st.session_state.sanitise_report = None
+if "sanitised_content" not in st.session_state:
+    st.session_state.sanitised_content = None
+if "sanitise_pending_approval" not in st.session_state:
+    st.session_state.sanitise_pending_approval = False
 
 # ── Model Inspector ───────────────────────────────────────────────────────────
 
-@st.cache_resource
-def load_model_context_from_path(bim_path):
-    """Load and format the Power BI model from a given path."""
-    with open(bim_path, "r", encoding="utf-8") as f:
-        model = json.load(f)
-
+def _parse_model(model):
+    """Shared logic: extract schema and format context string from parsed model JSON."""
     schema = {"tables": [], "relationships": []}
     tables = model.get("model", {}).get("tables", [])
 
@@ -99,8 +102,23 @@ def load_model_context_from_path(bim_path):
 
     lines.append("")
     lines.append("=== END OF MODEL ===")
-
     return "\n".join(lines), schema
+
+
+@st.cache_resource
+def load_model_context_from_string(content_hash, content):
+    """Load and format the Power BI model from sanitised content string.
+    content_hash is only used as a stable cache key."""
+    model = json.loads(content)
+    return _parse_model(model)
+
+
+@st.cache_resource
+def load_model_context_from_path(bim_path):
+    """Load and format the Power BI model from a given path."""
+    with open(bim_path, "r", encoding="utf-8") as f:
+        model = json.load(f)
+    return _parse_model(model)
 # ── Measure Library ───────────────────────────────────────────────────────────
 
 def load_library():
@@ -271,7 +289,6 @@ def run_agent(user_request, model_context, schema):
 st.title("📊 Power BI DAX Agent")
 st.caption("Generate, validate and manage DAX measures for your Power BI model.")
 
-# ── Sidebar: Model Selector ───────────────────────────────────────────────────
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.header("⚙️ Model Settings")
@@ -282,21 +299,131 @@ with st.sidebar:
         help="Paste the full path to your Power BI model.bim file"
     )
 
+    st.caption("Sanitisation settings")
+    san_sql = st.toggle("Mask SQL connection strings", value=True)
+    san_paths = st.toggle("Mask file & network paths", value=True)
+    san_urls = st.toggle("Mask URLs", value=True)
+    san_emails = st.toggle("Mask email addresses", value=True)
+    san_guids = st.toggle("Mask GUIDs", value=False)
+    san_rls = st.toggle("Remove RLS role definitions", value=False)
+    san_comments = st.toggle("Remove developer comments", value=True)
+
     load_model_btn = st.button("Load Model", type="primary")
+    st.caption(
+        "No data leaves your computer at this step. Clicking Load Model runs the "
+        "sanitiser locally on your laptop and creates a temporary in-memory copy "
+        "of the file with sensitive items redacted. You will then review the results "
+        "and choose to approve or cancel before anything is loaded into the agent."
+    )
 
     if load_model_btn:
-        st.cache_resource.clear()
-        st.session_state.model_path = model_path_input
-        st.rerun()
+        if not os.path.exists(model_path_input):
+            st.error(f"File not found: {model_path_input}")
+        else:
+            with st.spinner("Scanning for sensitive data..."):
+                try:
+                    san_content, san_report = sanitiser.sanitise_model(
+                        model_path_input,
+                        mask_sql_connections=san_sql,
+                        mask_file_paths=san_paths,
+                        mask_urls=san_urls,
+                        mask_emails=san_emails,
+                        mask_guids=san_guids,
+                        remove_rls=san_rls,
+                        remove_comments=san_comments,
+                    )
+                    st.session_state.sanitised_content = san_content
+                    st.session_state.sanitise_report = san_report
+                    st.session_state.sanitise_pending_approval = True
+                    # Clear any previously loaded model
+                    st.cache_resource.clear()
+                    st.session_state.pop("model_path", None)
+                    st.session_state.pop("model_context", None)
+                    st.session_state.pop("schema", None)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Sanitisation failed: {e}")
 
     if "model_path" not in st.session_state:
         st.session_state.model_path = BIM_PATH
-        
+
 st.divider()
 
-# Load model using path from session state
+# ── Sanitisation Review Screen ────────────────────────────────────────────────
+if st.session_state.sanitise_pending_approval and st.session_state.sanitise_report:
+    report = st.session_state.sanitise_report
+    total = report["total_replacements"]
+
+    st.subheader("Model Sanitisation Review")
+
+    if total == 0:
+        st.success("No sensitive items found. The model appears clean.")
+    else:
+        st.warning(f"{total} sensitive item(s) were found and masked before loading.")
+
+    # Settings used
+    s = report["settings"]
+    setting_labels = {
+        "mask_sql_connections": "SQL connections",
+        "mask_file_paths": "file/network paths",
+        "mask_urls": "URLs",
+        "mask_emails": "emails",
+        "mask_guids": "GUIDs",
+        "remove_rls": "RLS roles",
+        "remove_comments": "comments",
+    }
+    on = [label for key, label in setting_labels.items() if s.get(key)]
+    off = [label for key, label in setting_labels.items() if not s.get(key)]
+    st.caption(f"Scanning for: {', '.join(on) or 'nothing'}  |  Skipped: {', '.join(off) or 'none'}")
+
+    # Category breakdown
+    if report["categories"]:
+        st.markdown("**Replacements by category**")
+        cat_rows = [{"Category": k, "Count": v} for k, v in sorted(report["categories"].items())]
+        st.table(cat_rows)
+
+    # Items found — expanded by default so the user can see exactly what was redacted
+    if report["items_found"]:
+        with st.expander(f"{len(report['items_found'])} item(s) found — click to collapse", expanded=True):
+            for item in report["items_found"]:
+                st.markdown(
+                    f"- **{item['category']}** &nbsp;|&nbsp; "
+                    f"`{item['original'][:80]}` &nbsp;→&nbsp; `{item['replacement']}`"
+                )
+    elif total == 0:
+        st.info("Nothing was redacted — the model contains no sensitive items matching the selected categories.")
+
+    col_approve, col_cancel = st.columns(2)
+    with col_approve:
+        if st.button("Approve and Load Model", type="primary"):
+            try:
+                content = st.session_state.sanitised_content
+                content_hash = str(hash(content))
+                model_context, schema = load_model_context_from_string(content_hash, content)
+                st.session_state.model_context = model_context
+                st.session_state.schema = schema
+                st.session_state.sanitise_pending_approval = False
+                st.rerun()
+            except Exception as e:
+                st.error(f"Failed to parse sanitised model: {e}")
+    with col_cancel:
+        if st.button("Cancel"):
+            st.session_state.sanitise_pending_approval = False
+            st.session_state.sanitised_content = None
+            st.session_state.sanitise_report = None
+            st.rerun()
+
+    st.stop()
+
+# ── Model Loading ─────────────────────────────────────────────────────────────
+# Use approved sanitised content if available, otherwise load from path
 try:
-    model_context, schema = load_model_context_from_path(st.session_state.model_path)
+    if "model_context" in st.session_state and st.session_state.model_context:
+        model_context = st.session_state.model_context
+        schema = st.session_state.schema
+    else:
+        model_context, schema = load_model_context_from_path(st.session_state.model_path)
+
     table_count = len(schema["tables"])
     rel_count = len(schema["relationships"])
     st.success(f"Model loaded — {table_count} tables, {rel_count} relationships.")
@@ -334,7 +461,7 @@ try:
 except Exception as e:
     st.error(f"Could not load model: {e}")
     st.stop()
-    
+
 st.divider()
 
 col1, col2 = st.columns([2, 1])
