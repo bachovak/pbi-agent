@@ -489,9 +489,12 @@ with st.sidebar:
 
 st.divider()
 
-col1, col2 = st.columns([2, 1])
+tab_generate, tab_impact = st.tabs(["Generate a Measure", "Impact Analysis"])
 
-with col1:
+with tab_generate:
+  col1, col2 = st.columns([2, 1])
+
+  with col1:
     st.subheader("Generate a Measure")
     user_request = st.text_area(
         "Describe the measure you need:",
@@ -581,68 +584,73 @@ with col1:
             st.code(st.session_state.generated_dax, language="dax")
             st.info("Try rephrasing your request with more specific table and column names.")
 
-with col2:
-    st.subheader("Measure Library")
-    library = load_library()
+  with col2:
+      st.subheader("Measure Library")
+      library = load_library()
 
-    if not library:
-        st.info("No measures saved yet.")
-    else:
-        st.caption(f"{len(library)} measures saved")
-        for entry in reversed(library[-10:]):
-            with st.expander(f"#{entry['id']} — {entry['request'][:40]}"):
-                st.code(entry["dax"], language="dax")
-                st.caption(f"Saved: {entry['created_at'][:10]}")
+      if not library:
+          st.info("No measures saved yet.")
+      else:
+          st.caption(f"{len(library)} measures saved")
+          for entry in reversed(library[-10:]):
+              with st.expander(f"#{entry['id']} — {entry['request'][:40]}"):
+                  st.code(entry["dax"], language="dax")
+                  st.caption(f"Saved: {entry['created_at'][:10]}")
 
-# ── Impact Analysis ────────────────────────────────────────────────────────────
-if st.session_state.lineage_graph:
-    st.divider()
+# ── Impact Analysis Tab ────────────────────────────────────────────────────────
+with tab_impact:
     st.subheader("Impact Analysis")
-    st.caption("Select a table or column to see what measures and objects depend on it.")
-
-    g = st.session_state.lineage_graph
-
-    # Build dropdown options: tables and columns only (the things measures depend on)
-    options = {}  # display label -> node_id
-    for node_id, node in sorted(g["nodes"].items(), key=lambda x: (x[1]["type"], x[1]["name"])):
-        if node["type"] == "table":
-            label = f"[Table]  {node['name']}"
-        elif node["type"] == "column":
-            table = node.get("metadata", {}).get("table", "")
-            label = f"[Column]  {table} → {node['name']}"
-        elif node["type"] == "measure":
-            table = node.get("metadata", {}).get("table", "")
-            label = f"[Measure]  {table} → {node['name']}"
-        else:
-            continue
-        options[label] = node_id
-
-    selected_label = st.selectbox(
-        "Select an object:",
-        options=["— select —"] + list(options.keys()),
+    st.markdown(
+        "Impact Analysis shows you which measures, columns, and tables depend on a selected "
+        "object in your data model. Use it before renaming or removing a column or table to "
+        "understand what would break, or to trace which measures are built on top of a given field."
     )
 
-    if selected_label and selected_label != "— select —":
-        selected_node_id = options[selected_label]
-        impacts = lineage.impact_analysis(g, selected_node_id)
+    if not st.session_state.lineage_graph:
+        st.info("Load a model first to use Impact Analysis.")
+    else:
+        g = st.session_state.lineage_graph
 
-        if not impacts:
-            st.success("No dependents found — this object is safe to change.")
-        else:
-            st.warning(f"{len(impacts)} object(s) would be affected by changes to this item.")
-            type_icon = {"measure": "📐", "column": "📋", "table": "🗂️"}
-            rel_label = {
-                "references_column": "uses column",
-                "references_measure": "uses measure",
-                "belongs_to": "belongs to",
-                "relates_to": "relates to",
-            }
-            for item in impacts:
-                indent = "&nbsp;" * (item["depth"] * 6)
-                icon = type_icon.get(item["type"], "•")
-                rel = rel_label.get(item["relationship"], item["relationship"])
-                st.markdown(
-                    f"{indent}{icon} **{item['name']}** "
-                    f"<span style='color:#78716C'>({item['type']} · {rel})</span>",
-                    unsafe_allow_html=True,
-                )
+        options = {}  # display label -> node_id
+        for node_id, node in sorted(g["nodes"].items(), key=lambda x: (x[1]["type"], x[1]["name"])):
+            if node["type"] == "table":
+                label = f"[Table]  {node['name']}"
+            elif node["type"] == "column":
+                table = node.get("metadata", {}).get("table", "")
+                label = f"[Column]  {table} → {node['name']}"
+            elif node["type"] == "measure":
+                table = node.get("metadata", {}).get("table", "")
+                label = f"[Measure]  {table} → {node['name']}"
+            else:
+                continue
+            options[label] = node_id
+
+        selected_label = st.selectbox(
+            "Select an object:",
+            options=["— select —"] + list(options.keys()),
+        )
+
+        if selected_label and selected_label != "— select —":
+            selected_node_id = options[selected_label]
+            impacts = lineage.impact_analysis(g, selected_node_id)
+
+            if not impacts:
+                st.success("No dependents found — this object is safe to change.")
+            else:
+                st.warning(f"{len(impacts)} object(s) would be affected by changes to this item.")
+                type_icon = {"measure": "📐", "column": "📋", "table": "🗂️"}
+                rel_label = {
+                    "references_column": "uses column",
+                    "references_measure": "uses measure",
+                    "belongs_to": "belongs to",
+                    "relates_to": "relates to",
+                }
+                for item in impacts:
+                    indent = "&nbsp;" * (item["depth"] * 6)
+                    icon = type_icon.get(item["type"], "•")
+                    rel = rel_label.get(item["relationship"], item["relationship"])
+                    st.markdown(
+                        f"{indent}{icon} **{item['name']}** "
+                        f"<span style='color:#78716C'>({item['type']} · {rel})</span>",
+                        unsafe_allow_html=True,
+                    )
