@@ -220,3 +220,5 @@ Turn off the **Remove developer comments** toggle in the sanitisation screen and
 By default, you copy generated measures into your Power BI model manually via Tabular Editor. If you would prefer the agent to push them in automatically, you can set up the Power BI connector — see [CONNECTOR_SETUP.md](CONNECTOR_SETUP.md) for instructions.
 
 > This requires an Azure account and a Power BI Pro or Premium licence. Most users will not need it.
+>
+> **Note:** this feature has not been tested, so it is unclear whether it works as expected. Use at your own risk. If you do try it, any feedback on how it works (or doesn't) would be very welcome.
