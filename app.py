@@ -302,7 +302,8 @@ with st.sidebar:
         help="Paste the folder that contains your Model.bim file — the filename will be added automatically"
     )
     model_path_input = os.path.join(folder_path_input, "Model.bim") if folder_path_input else ""
-    st.caption("Model file: `Model.bim`")
+    if model_path_input:
+        st.caption(f"Full path: `{model_path_input}`")
 
     st.caption("Sanitisation settings")
     san_sql = st.toggle("Mask SQL connection strings", value=True)
