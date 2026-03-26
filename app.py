@@ -296,11 +296,13 @@ st.caption("Generate, validate and manage DAX measures for your Power BI model."
 with st.sidebar:
     st.header("⚙️ Model Settings")
 
-    model_path_input = st.text_input(
-        "Path to model.bim file:",
-        value=BIM_PATH,
-        help="Paste the full path to your Power BI model.bim file"
+    folder_path_input = st.text_input(
+        "Path to model folder:",
+        value=os.path.dirname(BIM_PATH) if BIM_PATH else "",
+        help="Paste the folder that contains your Model.bim file — the filename will be added automatically"
     )
+    model_path_input = os.path.join(folder_path_input, "Model.bim") if folder_path_input else ""
+    st.caption("Model file: `Model.bim`")
 
     st.caption("Sanitisation settings")
     san_sql = st.toggle("Mask SQL connection strings", value=True)
