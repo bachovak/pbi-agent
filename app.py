@@ -12,7 +12,7 @@ load_dotenv()
 client = anthropic.Anthropic()
 
 LIBRARY_FILE = "measure_library.json"
-BIM_PATH = os.getenv("BIM_PATH", "Model.bim")
+BIM_PATH = os.getenv("BIM_PATH", "")
 
 # ── Page Config ───────────────────────────────────────────────────────────────
 
@@ -347,7 +347,7 @@ with st.sidebar:
                 except Exception as e:
                     st.error(f"Sanitisation failed: {e}")
 
-    if "model_path" not in st.session_state:
+    if "model_path" not in st.session_state and BIM_PATH:
         st.session_state.model_path = BIM_PATH
 
 st.divider()
@@ -423,61 +423,69 @@ if st.session_state.sanitise_pending_approval and st.session_state.sanitise_repo
 
 # ── Model Loading ─────────────────────────────────────────────────────────────
 # Use approved sanitised content if available, otherwise load from path
-try:
-    if "model_context" in st.session_state and st.session_state.model_context:
+if "model_context" in st.session_state and st.session_state.model_context:
+    try:
         model_context = st.session_state.model_context
         schema = st.session_state.schema
-    else:
+        table_count = len(schema["tables"])
+        rel_count = len(schema["relationships"])
+        st.success(f"Model loaded — {table_count} tables, {rel_count} relationships.")
+    except Exception as e:
+        st.error(f"Could not load model: {e}")
+        st.stop()
+elif st.session_state.get("model_path") and os.path.exists(st.session_state.model_path):
+    try:
         model_context, schema = load_model_context_from_path(st.session_state.model_path)
-
-    table_count = len(schema["tables"])
-    rel_count = len(schema["relationships"])
-    st.success(f"Model loaded — {table_count} tables, {rel_count} relationships.")
-
-    # Add model browser and search to sidebar now that schema is loaded
-    with st.sidebar:
-        st.divider()
-        st.header("🔍 Measure Search")
-        search_term = st.text_input("Search library:", placeholder="e.g. revenue")
-        if search_term:
-            library = load_library()
-            results = [m for m in library if search_term.lower() in m["request"].lower()
-                      or search_term.lower() in m["dax"].lower()]
-            if results:
-                st.caption(f"{len(results)} match(es) found")
-                for m in results:
-                    with st.expander(f"#{m['id']} — {m['request'][:35]}"):
-                        st.code(m["dax"], language="dax")
-            else:
-                st.caption("No matches found.")
-
-        st.divider()
-        st.header("📋 Model Browser")
-        for table in schema["tables"]:
-            with st.expander(f"{table['name']}"):
-                if table["columns"]:
-                    st.caption("Columns")
-                    for col in table["columns"]:
-                        st.markdown(f"- `{col['name']}` *{col['dataType']}*")
-                if table["measures"]:
-                    st.caption("Existing Measures")
-                    for m in table["measures"]:
-                        st.markdown(f"- `[{m['name']}]`")
-
-        if st.session_state.lineage_graph:
-            g = st.session_state.lineage_graph
-            node_types = {}
-            for node in g["nodes"].values():
-                node_types[node["type"]] = node_types.get(node["type"], 0) + 1
-            st.divider()
-            st.header("🔗 Lineage")
-            st.caption(f"{len(g['nodes'])} nodes · {len(g['edges'])} edges")
-            for ntype, count in sorted(node_types.items()):
-                st.caption(f"  {ntype}: {count}")
-
-except Exception as e:
-    st.error(f"Could not load model: {e}")
+        table_count = len(schema["tables"])
+        rel_count = len(schema["relationships"])
+        st.success(f"Model loaded — {table_count} tables, {rel_count} relationships.")
+    except Exception as e:
+        st.error(f"Could not load model: {e}")
+        st.stop()
+else:
+    st.info("Enter the path to your Power BI model (.bim file) in the sidebar and click **Load Model** to get started.")
     st.stop()
+
+# Add model browser and search to sidebar now that schema is loaded
+with st.sidebar:
+    st.divider()
+    st.header("🔍 Measure Search")
+    search_term = st.text_input("Search library:", placeholder="e.g. revenue")
+    if search_term:
+        library = load_library()
+        results = [m for m in library if search_term.lower() in m["request"].lower()
+                  or search_term.lower() in m["dax"].lower()]
+        if results:
+            st.caption(f"{len(results)} match(es) found")
+            for m in results:
+                with st.expander(f"#{m['id']} — {m['request'][:35]}"):
+                    st.code(m["dax"], language="dax")
+        else:
+            st.caption("No matches found.")
+
+    st.divider()
+    st.header("📋 Model Browser")
+    for table in schema["tables"]:
+        with st.expander(f"{table['name']}"):
+            if table["columns"]:
+                st.caption("Columns")
+                for col in table["columns"]:
+                    st.markdown(f"- `{col['name']}` *{col['dataType']}*")
+            if table["measures"]:
+                st.caption("Existing Measures")
+                for m in table["measures"]:
+                    st.markdown(f"- `[{m['name']}]`")
+
+    if st.session_state.lineage_graph:
+        g = st.session_state.lineage_graph
+        node_types = {}
+        for node in g["nodes"].values():
+            node_types[node["type"]] = node_types.get(node["type"], 0) + 1
+        st.divider()
+        st.header("🔗 Lineage")
+        st.caption(f"{len(g['nodes'])} nodes · {len(g['edges'])} edges")
+        for ntype, count in sorted(node_types.items()):
+            st.caption(f"  {ntype}: {count}")
 
 st.divider()
 
