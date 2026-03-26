@@ -1,236 +1,222 @@
 # Getting Started with Power BI DAX Agent
 
-This guide takes you from zero to running the agent on your own Power BI model.
+This guide walks you through setting up the agent step by step. No programming experience is required — just follow each step in order.
 
 ---
 
-## What you need before starting
+## Before you begin — what you will need
 
-- Python 3.9 or higher — [download here](https://www.python.org/downloads/)
-- Git — [download here](https://git-scm.com/downloads)
-- An Anthropic account — [sign up here](https://console.anthropic.com)
-- Your Power BI model file (`Model.bim`) exported from Tabular Editor
+You will need to install two small programs and create one online account before you can start. Here is the full list:
+
+| What | Why you need it | Where to get it |
+|---|---|---|
+| **Python** | The language the agent is written in | [python.org/downloads](https://www.python.org/downloads/) |
+| **Git** | Downloads the project files to your computer | [git-scm.com/downloads](https://git-scm.com/downloads) |
+| **Anthropic account** | The agent uses Claude (AI) to generate DAX — you need an API key | [console.anthropic.com](https://console.anthropic.com) |
+| **Your Power BI model file** | The agent reads this to understand your tables and columns | Exported from Tabular Editor — see Step 4 |
+
+> **Not sure if Python or Git is already installed?**
+> Open a terminal (see the tip below) and type `python --version` then press Enter. If you see a version number like `Python 3.11.2`, it is already installed. Do the same with `git --version`.
 
 ---
 
-## Step 1 — Clone the repository
+### How to open a terminal
 
-Open a terminal and run:
+A terminal is a text window where you type commands. Here is how to open one:
 
-```bash
+- **Windows:** Press the Windows key, type `cmd`, and press Enter. A black window will appear.
+- **Mac:** Press Cmd + Space, type `Terminal`, and press Enter.
+
+You will use this window throughout this guide. Keep it open.
+
+---
+
+## Step 1 — Install Python
+
+1. Go to [python.org/downloads](https://www.python.org/downloads/) and click the big **Download Python** button
+2. Run the installer
+3. **Important (Windows only):** On the first screen of the installer, tick the box that says **"Add Python to PATH"** before clicking Install
+
+Once installed, close and reopen your terminal, then type `python --version` to confirm it worked.
+
+---
+
+## Step 2 — Install Git
+
+1. Go to [git-scm.com/downloads](https://git-scm.com/downloads) and download the installer for your system
+2. Run the installer — the default options are fine, just keep clicking Next
+3. Once installed, close and reopen your terminal, then type `git --version` to confirm it worked
+
+---
+
+## Step 3 — Download the project
+
+In your terminal, type the following two commands one at a time, pressing Enter after each:
+
+```
 git clone https://github.com/bachovak/pbi-agent.git
+```
+
+```
 cd pbi-agent
 ```
 
+The first command downloads all the project files into a new folder called `pbi-agent` on your computer. The second command moves your terminal into that folder.
+
+> **Where is the folder?** It will be created in whatever folder your terminal was pointing to when you ran the command. On Windows this is usually `C:\Users\YourName\pbi-agent`.
+
 ---
 
-## Step 2 — Install Python dependencies
+## Step 4 — Install the required packages
 
-```bash
+Still in your terminal (make sure you are inside the `pbi-agent` folder), run:
+
+```
 pip install -r requirements.txt
 ```
 
-If you want to use the web UI (recommended), also install Streamlit:
+Then run:
 
-```bash
+```
 pip install streamlit
 ```
 
----
+This downloads all the small pieces of software the agent depends on. It may take a minute or two.
 
-## Step 3 — Get your Anthropic API key
-
-The agent uses Claude to generate and validate DAX. You need an API key.
-
-1. Go to [console.anthropic.com](https://console.anthropic.com)
-2. Sign in or create an account
-3. Click **API Keys** in the left sidebar
-4. Click **Create Key**, give it a name (e.g. `pbi-agent`), and copy the key
-
-> Keep this key private — treat it like a password. Never commit it to git.
+> **What is pip?** It is Python's built-in tool for installing packages. It was installed automatically with Python.
 
 ---
 
-## Step 4 — Export your model.bim file
+## Step 5 — Get your Anthropic API key
 
-The agent reads your Power BI data model to generate DAX that uses only your actual tables and columns.
+The agent uses Claude (an AI made by Anthropic) to generate and check your DAX. You need an API key — think of it as a password that lets the agent talk to Claude on your behalf.
 
-1. Open your Power BI report in **Tabular Editor** (free at [tabulareditor.com](https://tabulareditor.com))
-2. Go to **File → Save As**
-3. Save the file as `Model.bim` somewhere on your machine (e.g. `C:\Documents\MyProject\Model.bim`)
+1. Go to [console.anthropic.com](https://console.anthropic.com) and sign in (or create a free account)
+2. In the left sidebar, click **API Keys**
+3. Click **Create Key**, give it a name like `pbi-agent`, and click Create
+4. A long string starting with `sk-ant-` will appear — **copy it now** (it will not be shown again)
+
+> **Keep this key private.** Do not share it or paste it into emails. Treat it like a password.
 
 ---
 
-## Step 5 — Create your .env file
+## Step 6 — Export your Power BI model file
 
-In the project folder, copy the example file:
+The agent needs a copy of your data model so it knows what tables and columns you have. You export this from Tabular Editor.
 
-**On Windows:**
-```bash
+1. Download and install **Tabular Editor 2** (free) from [tabulareditor.com](https://tabulareditor.com) if you do not already have it
+2. Open your Power BI report, then open Tabular Editor from the **External Tools** ribbon
+3. In Tabular Editor, go to **File → Save As**
+4. Save the file as `Model.bim` somewhere easy to find, for example:
+   `C:\Users\YourName\Documents\MyProject\Model.bim`
+
+> Make a note of the full file path — you will need it in the next step.
+
+---
+
+## Step 7 — Create your settings file
+
+The agent reads its settings from a file called `.env` in the project folder. You will create this from the provided template.
+
+**On Windows**, in your terminal run:
+```
 copy .env.example .env
 ```
 
-**On Mac/Linux:**
-```bash
+**On Mac/Linux**, run:
+```
 cp .env.example .env
 ```
 
-Then open `.env` in any text editor and fill in your values:
+Now open the `.env` file in a text editor:
 
-```env
-ANTHROPIC_API_KEY=sk-ant-...        ← paste your key from Step 3
-BIM_PATH=C:\Documents\MyProject\Model.bim   ← path to your model from Step 4
+- **Windows:** Open File Explorer, navigate to the `pbi-agent` folder, right-click `.env`, and choose **Open with → Notepad**
+- **Mac:** Open Finder, navigate to the `pbi-agent` folder, right-click `.env`, and choose **Open with → TextEdit**
+
+> **Can't see the file?** Files starting with a dot are hidden by default. On Windows, in File Explorer go to **View → Show → Hidden items**. On Mac, press Cmd + Shift + . in Finder.
+
+You will see two lines to fill in. Replace the placeholder text with your actual values:
+
+```
+ANTHROPIC_API_KEY=sk-ant-...your key from Step 5...
+BIM_PATH=C:\Users\YourName\Documents\MyProject\Model.bim
 ```
 
-The Power BI connector variables (`PBI_CLIENT_ID` etc.) are **optional** — only needed if you want to push measures directly to Power BI. See [Configuring the Power BI connector](#configuring-the-power-bi-connector-optional) below.
+- For `BIM_PATH`, paste the full path to the `Model.bim` file you saved in Step 6
+- On Windows you can use either forward slashes (`C:/Users/...`) or double backslashes (`C:\\Users\\...`) — both work
+
+Save the file and close it.
 
 ---
 
-## Step 6 — Run the agent
+## Step 8 — Run the agent
 
-### Option A: Web UI (recommended)
+In your terminal (make sure you are in the `pbi-agent` folder), run:
 
-```bash
+```
 streamlit run app.py
 ```
 
-Your browser will open automatically at `http://localhost:8501`.
-
-**How to use it:**
-
-1. Paste the path to your `Model.bim` file in the sidebar (or leave it as the default from `BIM_PATH`)
-2. Choose your sanitisation settings — by default the tool will mask SQL connection strings, file paths, URLs, and email addresses before the model is loaded. You can also optionally mask GUIDs, remove RLS role definitions, and strip developer comments
-3. Click **Load Model** — the file is scanned locally on your machine; nothing is sent anywhere at this point
-4. A **Sanitisation Review** screen appears showing exactly what was found and redacted. If the model is clean, it will say so. Review the list and click **Approve and Load Model** to proceed, or **Cancel** to go back
-5. The model loads and the **lineage graph is built automatically** in the background. You will see a Lineage section in the sidebar showing node and edge counts. Scroll down on the main page to find **Impact Analysis** — select any table, column, or measure to see everything that depends on it before making a change
-6. Type your measure request in plain English, e.g.:
-   - `total room revenue for the current year`
-   - `average daily rate by room type`
-   - `number of bookings this month`
-7. Click **Generate DAX**
-8. The agent checks your library for duplicates, then generates and validates the DAX
-9. Review the output — click **Approve & Save** to add it to your library, or **Reject** to try again
-
-### Option B: Command line
-
-```bash
-python dax_agent.py
-```
-
-Same logic as the web UI but in your terminal. Type your request when prompted, and the agent will print the validated DAX.
+Your browser will open automatically and show the agent's interface. If it does not open, copy the address shown in the terminal (something like `http://localhost:8501`) and paste it into your browser.
 
 ---
 
-## Useful scripts
+## How to use the agent
 
-### View your saved measures
+Once the browser is open:
 
-```bash
+1. **Load your model** — the path from your `.env` file will already be filled in on the left. Click **Load Model**
+2. **Review the sanitisation report** — the agent scans your model and masks any sensitive information (connection strings, email addresses, etc.) before anything is sent to Claude. A screen will show you exactly what was found. Click **Approve and Load Model** to continue
+3. **Ask for a measure** — type your request in plain English in the main box, for example:
+   - `total revenue for the current year`
+   - `average daily rate by room type`
+   - `number of bookings this month`
+4. Click **Generate DAX**
+5. The agent will generate and validate the DAX for you. Review it, then click **Approve & Save** to add it to your library, or **Reject** to try again with a different request
+
+---
+
+## Helpful extras
+
+### See all your saved measures
+
+```
 python show_library.py
 ```
 
-Lists all measures you have approved and saved to the library.
+Lists every measure you have approved and saved.
 
-### Inspect your model
+### Check what the agent can see in your model
 
-```bash
+```
 python model_inspector.py
 ```
 
-Prints a full summary of tables, columns, and existing measures from your `Model.bim`. Run this first if you are unsure whether the agent can see your model correctly.
-
-### Build a lineage graph (CLI)
-
-```bash
-python lineage.py
-```
-
-Analyses your model and generates a `lineage.json` file showing which measures depend on which columns and tables. Also prints an impact report — useful for understanding what breaks if you rename or remove a column.
-
-> In the web UI this happens automatically — no need to run this script separately unless you want the `lineage.json` file saved to disk.
+Prints a summary of all tables, columns, and existing measures. Run this if a generated measure seems to be using wrong names — it will show you the exact names the agent works with.
 
 ---
 
-## Configuring the Power BI connector (optional)
+## Something went wrong?
 
-`pbi_connector.py` lets you push generated measures directly into your Power BI dataset via the REST API, instead of copying them manually into Tabular Editor.
+**"ANTHROPIC_API_KEY not found" or login error**
+Open your `.env` file and check that the key is pasted correctly with no extra spaces, and that the file is in the `pbi-agent` folder (the same folder as `app.py`).
 
-### What you need
+**"Cannot find model file" or model not loading**
+Check that the path in `BIM_PATH` matches exactly where you saved your `Model.bim` file. Copy the path directly from File Explorer to avoid typos.
 
-- An Azure account with access to the same tenant as your Power BI workspace
-- Power BI Pro or Premium licence
-
-### Steps
-
-**1. Register an app in Azure**
-
-1. Go to [portal.azure.com](https://portal.azure.com)
-2. Search for **Azure Active Directory** and open it
-3. Click **App registrations → New registration**
-4. Give it a name (e.g. `pbi-agent`), leave the rest as default, click **Register**
-5. Copy the **Application (client) ID** — this is your `PBI_CLIENT_ID`
-6. Copy the **Directory (tenant) ID** — this is your `PBI_TENANT_ID`
-
-**2. Create a client secret**
-
-1. In your app registration, go to **Certificates & secrets**
-2. Click **New client secret**, give it a description and expiry
-3. Copy the **Value** immediately (it is only shown once) — this is your `PBI_CLIENT_SECRET`
-
-**3. Grant Power BI permissions**
-
-1. In your app registration, go to **API permissions → Add a permission**
-2. Choose **Power BI Service**
-3. Select **Delegated permissions** and add:
-   - `Dataset.ReadWrite.All`
-4. Click **Grant admin consent**
-
-**4. Find your Workspace ID and Dataset ID**
-
-Open Power BI in your browser and navigate to your dataset. The URL will look like:
-
-```
-https://app.powerbi.com/groups/<WORKSPACE_ID>/datasets/<DATASET_ID>/details
-```
-
-Copy both IDs into your `.env` file.
-
-**5. Update your .env**
-
-```env
-PBI_CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-PBI_TENANT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-PBI_CLIENT_SECRET=your~secret~value
-PBI_WORKSPACE_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-PBI_DATASET_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-```
-
-**6. Test the connection**
-
-```bash
-python pbi_connector.py
-```
-
-If configured correctly, it will print the datasets available in your workspace.
-
----
-
-## Troubleshooting
-
-**`ANTHROPIC_API_KEY not found` or authentication error**
-Make sure your `.env` file is in the project root folder (same folder as `app.py`) and the key is correctly pasted with no extra spaces. If you cloned the repo, the `.env` file is not included — copy `.env.example` to `.env` and fill in your values.
-
-**`Failed to parse sanitised model` error after approving**
-This should not happen with a valid `Model.bim` file. If it does, try turning off the **Remove developer comments** toggle and loading again — some non-standard files may contain comment-like patterns in unexpected places.
-
-**`Cannot find model file` or model not loading**
-Check that `BIM_PATH` in your `.env` points to the exact location of your `Model.bim` file. On Windows, use either forward slashes (`C:/path/to/Model.bim`) or escaped backslashes (`C:\\path\\to\\Model.bim`).
-
-**DAX keeps failing validation**
-Try rephrasing your request with more specific table and column names. You can run `python model_inspector.py` to see exactly what table and column names are in your model, then reference them directly in your request.
-
-**Streamlit command not found**
+**"Streamlit command not found"**
 Run `pip install streamlit` and try again.
 
-**Power BI connector returns 401 Unauthorized**
-Check that admin consent was granted for your API permissions in Azure, and that your client secret has not expired.
+**"DAX keeps failing validation"**
+Try being more specific in your request. Run `python model_inspector.py` to see the exact table and column names in your model, then use those names directly in your request.
+
+**"Failed to parse sanitised model" after approving**
+Turn off the **Remove developer comments** toggle in the sanitisation screen and try loading again.
+
+---
+
+## Optional: push measures directly to Power BI
+
+By default, you copy generated measures into your Power BI model manually via Tabular Editor. If you would prefer the agent to push them in automatically, you can set up the Power BI connector — see [CONNECTOR_SETUP.md](CONNECTOR_SETUP.md) for instructions.
+
+> This requires an Azure account and a Power BI Pro or Premium licence. Most users will not need it.
