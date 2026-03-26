@@ -2,6 +2,7 @@ import streamlit as st
 import anthropic
 import json
 import os
+import base64
 from datetime import datetime
 from dotenv import load_dotenv
 import sanitiser
@@ -14,11 +15,18 @@ client = anthropic.Anthropic()
 LIBRARY_FILE = "measure_library.json"
 BIM_PATH = os.getenv("BIM_PATH", "")
 
+# ── Favicon ───────────────────────────────────────────────────────────────────
+
+_favicon_path = os.path.join(os.path.dirname(__file__), "favicon.svg")
+with open(_favicon_path, "rb") as _f:
+    _favicon_b64 = base64.b64encode(_f.read()).decode()
+FAVICON_DATA_URL = f"data:image/svg+xml;base64,{_favicon_b64}"
+
 # ── Page Config ───────────────────────────────────────────────────────────────
 
 st.set_page_config(
     page_title="Power BI DAX Agent",
-    page_icon="📊",
+    page_icon="favicon.svg",
     layout="wide"
 )
 
@@ -289,7 +297,16 @@ def run_agent(user_request, model_context, schema):
 
 # ── UI ────────────────────────────────────────────────────────────────────────
 
-st.title("📊 Power BI DAX Agent")
+st.markdown(
+    "<div style='text-align: center;'>Interested in what I do? Visit my website: "
+    "<a href='https://kristinabachova.com' target='_blank'>kristinabachova.com</a></div>",
+    unsafe_allow_html=True
+)
+st.markdown(
+    f"<h1 style='display:flex; align-items:center; gap:12px;'>"
+    f"<img src='{FAVICON_DATA_URL}' style='height:42px;'>Power BI DAX Agent</h1>",
+    unsafe_allow_html=True
+)
 st.caption("Generate, validate and manage DAX measures for your Power BI model.")
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
