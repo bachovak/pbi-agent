@@ -1,88 +1,24 @@
 import anthropic
 import json
 import os
+import re
 from datetime import datetime
 from dotenv import load_dotenv
+
+from model_inspector import (
+    load_model,
+    extract_schema,
+    format_schema_for_prompt,
+    build_model_registry,
+    format_registry_for_prompt,
+)
+from sanitiser import SemanticReferenceValidator
 
 load_dotenv()
 
 client = anthropic.Anthropic()
 
 LIBRARY_FILE = "measure_library.json"
-
-# ── Model Inspector ───────────────────────────────────────────────────────────
-
-def load_model(bim_path):
-    with open(bim_path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-def extract_schema(model):
-    schema = {"tables": [], "relationships": []}
-    tables = model.get("model", {}).get("tables", [])
-
-    for table in tables:
-        table_name = table.get("name")
-        if table.get("isHidden") or table_name.startswith("DateTableTemplate"):
-            continue
-
-        columns = []
-        for col in table.get("columns", []):
-            if col.get("type") == "calculated":
-                continue
-            columns.append({
-                "name": col.get("name"),
-                "dataType": col.get("dataType", "unknown")
-            })
-
-        measures = []
-        for measure in table.get("measures", []):
-            measures.append({
-                "name": measure.get("name"),
-                "expression": expr.strip() if isinstance(expr := measure.get("expression", ""), str) else " ".join(expr).strip()
-            })
-
-        schema["tables"].append({
-            "name": table_name,
-            "columns": columns,
-            "measures": measures
-        })
-
-    relationships = model.get("model", {}).get("relationships", [])
-    for rel in relationships:
-        schema["relationships"].append({
-            "from": f"{rel.get('fromTable')}[{rel.get('fromColumn')}]",
-            "to": f"{rel.get('toTable')}[{rel.get('toColumn')}]"
-        })
-
-    return schema
-
-def format_schema_for_prompt(schema):
-    lines = []
-    lines.append("=== POWER BI DATA MODEL ===")
-    lines.append("")
-
-    for table in schema["tables"]:
-        lines.append(f"TABLE: {table['name']}")
-        if table["columns"]:
-            lines.append("  Columns:")
-            for col in table["columns"]:
-                lines.append(f"    - {col['name']} ({col['dataType']})")
-        if table["measures"]:
-            lines.append("  Existing Measures:")
-            for m in table["measures"]:
-                lines.append(f"    - {m['name']}: {m['expression']}")
-        lines.append("")
-
-    if schema["relationships"]:
-        lines.append("RELATIONSHIPS:")
-        for rel in schema["relationships"]:
-            lines.append(f"  - {rel['from']} -> {rel['to']}")
-    else:
-        lines.append("RELATIONSHIPS: None defined yet")
-
-    lines.append("")
-    lines.append("=== END OF MODEL ===")
-    return "\n".join(lines)
 
 # ── Measure Library ───────────────────────────────────────────────────────────
 
@@ -140,8 +76,78 @@ def save_to_library(user_request, dax, attempts_taken):
 
 # ── DAX Generator ─────────────────────────────────────────────────────────────
 
-def generate_dax(user_request, model_context, previous_attempt=None, feedback=None):
-    if previous_attempt and feedback:
+# System prompt constraint block injected when a model registry is available.
+# Sourced from: analysis of data-goblin/power-bi-agentic-development (GPL v3) —
+# patterns E2 (DON'T MAKE ASSUMPTIONS), E4 (fully-qualified refs), B1/B2
+# (existence checks), F2 (summarizeBy semantic rules), F3 (compat gating).
+_REGISTRY_CONSTRAINT = """
+## MODEL OBJECT CONSTRAINT — READ THIS FIRST
+
+The Model Object Registry below is the authoritative list of every table,
+column, and measure that exists in this model. You are STRICTLY CONSTRAINED
+to reference only objects that appear in it.
+
+RULES — violating any of these will cause the measure to fail validation:
+
+1. NEVER invent, guess, or infer object names. If you need an object that
+   is not in the registry, say so explicitly instead of generating a
+   reference to it.
+
+2. All column references MUST use single-quoted table names:
+      CORRECT : 'Sales'[Amount]
+      WRONG   : Sales[Amount]  or  [Amount]  or  Sales[Amount]
+
+3. Measure references are always unqualified bracket notation:
+      CORRECT : [Total Revenue]
+      WRONG   : 'Sales'[Total Revenue]  or  Sales[Total Revenue]
+
+4. Do NOT aggregate (SUM, AVERAGE, MIN, MAX, COUNT, DISTINCTCOUNT) any
+   column tagged [no-aggregate] or [key] in the registry. These are key
+   columns and attribute columns — aggregating them is semantically wrong.
+
+5. Do NOT use SELECTEDMEASURE() unless the registry shows
+   "Calculation groups: YES".
+
+6. Do NOT use DAX UDFs (e.g. MyLib.Function()) unless the registry shows
+   compatibility level >= 1702.
+
+7. Before writing any object reference, verify it appears verbatim in the
+   registry. If you are uncertain, do not write it.
+
+{registry_block}
+"""
+
+def generate_dax(user_request, model_context, previous_attempt=None, feedback=None, model_registry=None, ref_correction=False):
+    """
+    Generate a DAX measure for the given request.
+
+    model_registry: if provided (dict from build_model_registry()), the
+    structured object constraint is injected into the system prompt so
+    Claude is hard-constrained to only reference objects that exist.
+
+    ref_correction: if True, use a targeted correction prompt that lists
+    each reference error as a numbered item and instructs Claude to fix
+    only those objects without regenerating the rest of the expression.
+    """
+    if ref_correction and previous_attempt and feedback:
+        # T2-C: targeted reference-error correction prompt.
+        # Errors are listed individually so Claude fixes each one precisely
+        # rather than regenerating. Full model context is omitted to keep
+        # the focus on the specific objects that need correcting.
+        errors = [e.strip() for e in feedback.split(" | ") if e.strip()]
+        errors_text = "\n".join(f"  {i + 1}. {e}" for i, e in enumerate(errors))
+        content = f"""The DAX expression below contains reference errors.
+Correct ONLY the specific objects listed below — do not change the measure name,
+the calculation logic, or any other part of the expression.
+
+EXPRESSION TO CORRECT:
+{previous_attempt}
+
+REFERENCE ERRORS TO FIX:
+{errors_text}
+
+Every corrected reference must appear verbatim in the Model Object Registry."""
+    elif previous_attempt and feedback:
         content = f"""Request: {user_request}
 
 Your previous attempt was:
@@ -150,37 +156,43 @@ Your previous attempt was:
 That attempt failed validation with this feedback:
 {feedback}
 
-Please fix the issue and try again.
-Remember to only use tables and columns that exist in the data model below."""
+Please fix ONLY the specific issues listed above — do not change anything else.
+Every object reference must appear in the Model Object Registry."""
     else:
         content = f"Request: {user_request}"
+
+    # Build system prompt — inject registry constraint when available
+    if model_registry:
+        registry_block = format_registry_for_prompt(model_registry)
+        constraint_section = _REGISTRY_CONSTRAINT.format(registry_block=registry_block)
+    else:
+        constraint_section = (
+            "\nYou must ONLY use tables and columns that exist in the data model below. "
+            "Do NOT invent table or column names. "
+            "Always fully qualify column references as 'TableName'[ColumnName].\n"
+        )
+
+    system_prompt = f"""You are an expert Power BI DAX developer.
+{constraint_section}
+Respond with ONLY the DAX measure code — no explanations, no markdown, no backticks.
+
+Output format (one line for simple measures, multi-line for complex ones):
+Measure Name = DAX expression
+
+Here is the full data model for additional context:
+
+{model_context}"""
 
     message = client.messages.create(
         model="claude-sonnet-4-5",
         max_tokens=1024,
-        system=f"""You are an expert Power BI DAX developer.
-You will be given a business measure request and a data model to work with.
-You must ONLY use tables and columns that exist in the data model.
-Do NOT invent table or column names.
-Respond with ONLY the DAX measure code — no explanations, no markdown, no backticks.
-
-Example output format:
-Total Revenue = SUM(Fact_DailyFlash[TotalRevenue])
-
-Here is the data model you must use:
-
-{model_context}""",
-        messages=[
-            {"role": "user", "content": content}
-        ]
+        system=system_prompt,
+        messages=[{"role": "user", "content": content}]
     )
-    raw = message.content[0].text
-    # Strip markdown code fences if Claude added them
-    raw = raw.strip()
+    raw = message.content[0].text.strip()
+    # Strip markdown code fences if Claude added them anyway
     if raw.startswith("```"):
-        lines = raw.split("\n")
-        # Remove first line (```dax or ```) and last line (```)
-        lines = [l for l in lines if not l.strip().startswith("```")]
+        lines = [l for l in raw.split("\n") if not l.strip().startswith("```")]
         raw = "\n".join(lines).strip()
     return raw
 
@@ -191,17 +203,23 @@ def validate_structural(dax):
     if "=" not in dax:
         issues.append("Missing measure name — no equals sign found")
     if "[" not in dax or "]" not in dax:
-        issues.append("No column references found — may be incomplete")
+        issues.append("No column or measure references found — may be incomplete")
     if len(dax.strip()) < 10:
         issues.append("Output is too short — may not be valid DAX")
     return issues
 
+
 def validate_columns_exist(dax, schema):
-    """Check that every Table[Column] reference in the DAX exists in the model."""
-    import re
+    """
+    Check that every Table[Column] reference in the DAX exists in the model.
+
+    Handles both forms:
+      'TableName'[ColumnName]   — single-quoted (correct form)
+      TableName[ColumnName]     — unquoted (common LLM output, still checked)
+    """
     issues = []
 
-    # Build a lookup of valid table[column] pairs
+    # Build lookup sets
     valid_refs = set()
     table_names = set()
     for table in schema["tables"]:
@@ -211,16 +229,47 @@ def validate_columns_exist(dax, schema):
         for measure in table["measures"]:
             valid_refs.add(f"{table['name'].lower()}[{measure['name'].lower()}]")
 
-    # Find all Table[Column] references in the DAX
-    pattern = r"(\w+)\[([^\]]+)\]"
-    matches = re.findall(pattern, dax)
-
-    for table, column in matches:
+    # Match both 'Table'[Column] and Table[Column]
+    pattern = re.compile(r"'?([A-Za-z0-9 _$]+)'?\[([^\]]+)\]")
+    for match in pattern.finditer(dax):
+        table = match.group(1).strip()
+        column = match.group(2).strip()
         ref = f"{table.lower()}[{column.lower()}]"
         if table.lower() in table_names and ref not in valid_refs:
-            issues.append(f"Column not found in model: {table}[{column}]")
+            issues.append(f"Column not found in model: '{table}'[{column}]")
 
     return issues
+
+
+def check_name_collision(dax, library):
+    """
+    Check if the measure name in the generated DAX exactly matches a measure
+    name already saved in the library.
+
+    Returns a warning string if a collision is found, None otherwise.
+    This is a hard-name check — semantic similarity is handled separately
+    by check_for_duplicate().
+    """
+    if not library:
+        return None
+
+    # Extract the measure name from the generated DAX (text before first =)
+    match = re.match(r"^\s*([^=\[]+?)\s*=", dax)
+    if not match:
+        return None
+    generated_name = match.group(1).strip()
+
+    for entry in library:
+        existing_match = re.match(r"^\s*([^=\[]+?)\s*=", entry.get("dax", ""))
+        if existing_match:
+            existing_name = existing_match.group(1).strip()
+            if generated_name.lower() == existing_name.lower():
+                return (
+                    f"NAME COLLISION: Measure '{generated_name}' already exists "
+                    f"in the library (ID {entry['id']}). This will overwrite it. "
+                    f"Rename the measure or confirm the replacement."
+                )
+    return None
 
 def validate_semantic(user_request, dax, model_context):
     message = client.messages.create(
@@ -252,7 +301,10 @@ def main():
     model = load_model(bim_path)
     schema = extract_schema(model)
     model_context = format_schema_for_prompt(schema)
-    print(f"Model loaded: {len(schema['tables'])} tables found.")
+    model_registry = build_model_registry(model)
+    print(f"Model loaded: {len(schema['tables'])} tables, "
+          f"{len(model_registry['measures'])} measures, "
+          f"compat level {model_registry['compatibility_level']}.")
 
     print("\nType 'quit' to exit.\n")
 
@@ -286,7 +338,10 @@ def main():
                 print("  Could not parse duplicate ID, proceeding with generation...")
 
         max_attempts = 3
+        max_ref_retries = 2
         attempt = 1
+        ref_retry_count = 0
+        ref_correction = False
         previous_dax = None
         previous_feedback = None
         success = False
@@ -295,8 +350,14 @@ def main():
             print(f"\n  Attempt {attempt} of {max_attempts}...")
 
             dax = generate_dax(
-                user_request, model_context, previous_dax, previous_feedback
+                user_request,
+                model_context,
+                previous_dax,
+                previous_feedback,
+                model_registry=model_registry,
+                ref_correction=ref_correction,
             )
+            ref_correction = False  # reset after each generation
 
             # Structural check
             structural_issues = validate_structural(dax)
@@ -307,16 +368,42 @@ def main():
                 attempt += 1
                 continue
 
-            # Column existence check
-            column_issues = validate_columns_exist(dax, schema)
-            if column_issues:
-                print(f"  Column issues: {column_issues}")
-                previous_dax = dax
-                previous_feedback = " | ".join(column_issues)
-                attempt += 1
-                continue
+            # Semantic reference validation — column, measure, compat, aggregation
+            if model_registry:
+                ref_result = SemanticReferenceValidator(model_registry).validate(dax)
+                if ref_result["warnings"]:
+                    for w in ref_result["warnings"]:
+                        print(f"  Warning: {w}")
+                if not ref_result["passed"]:
+                    ref_retry_count += 1
+                    if ref_retry_count > max_ref_retries:
+                        print(f"  Reference errors persist after {max_ref_retries} correction attempt(s) — stopping.")
+                        break
+                    print(f"  Reference correction {ref_retry_count}/{max_ref_retries}: {ref_result['errors']}")
+                    previous_dax = dax
+                    previous_feedback = " | ".join(ref_result["errors"])
+                    ref_correction = True
+                    attempt += 1
+                    continue
+            else:
+                column_issues = validate_columns_exist(dax, schema)
+                if column_issues:
+                    print(f"  Reference issues: {column_issues}")
+                    previous_dax = dax
+                    previous_feedback = " | ".join(column_issues)
+                    attempt += 1
+                    continue
 
-            print("  Structural + column validation passed.")
+            print("  Structural + reference validation passed.")
+
+            # Name collision check (T1-F)
+            collision = check_name_collision(dax, library)
+            if collision:
+                print(f"\n  ⚠  {collision}")
+                choice = input("  Proceed anyway? (yes/no): ").strip().lower()
+                if choice != "yes":
+                    print("  Cancelled. Try again with a different measure name.")
+                    break
 
             # Semantic check
             semantic_result = validate_semantic(user_request, dax, model_context)

@@ -7,6 +7,8 @@ from datetime import datetime
 from dotenv import load_dotenv
 import sanitiser
 import lineage
+from model_inspector import build_model_registry, format_registry_for_prompt
+from sanitiser import SemanticReferenceValidator
 
 load_dotenv()
 
@@ -54,8 +56,52 @@ if "sanitise_pending_approval" not in st.session_state:
     st.session_state.sanitise_pending_approval = False
 if "lineage_graph" not in st.session_state:
     st.session_state.lineage_graph = None
+if "model_registry" not in st.session_state:
+    st.session_state.model_registry = None
 
 # ── Model Inspector ───────────────────────────────────────────────────────────
+
+# Injected into System B's prompt when a model registry is available.
+# Sourced from analysis of data-goblin/power-bi-agentic-development (GPL v3) —
+# patterns E2 (DON'T MAKE ASSUMPTIONS), E4 (fully-qualified refs),
+# B1/B2 (existence checks), F2 (summarizeBy semantic rules), F3 (compat gating).
+_REGISTRY_CONSTRAINT = """
+## MODEL OBJECT CONSTRAINT — READ THIS FIRST
+
+The Model Object Registry below is the authoritative list of every table,
+column, and measure that exists in this model. You are STRICTLY CONSTRAINED
+to reference only objects that appear in it.
+
+RULES — violating any of these will cause the measure to fail validation:
+
+1. NEVER invent, guess, or infer object names. If you need an object that
+   is not in the registry, say so explicitly instead of generating a
+   reference to it.
+
+2. All column references MUST use single-quoted table names:
+      CORRECT : 'Sales'[Amount]
+      WRONG   : Sales[Amount]  or  [Amount]  or  Sales[Amount]
+
+3. Measure references are always unqualified bracket notation:
+      CORRECT : [Total Revenue]
+      WRONG   : 'Sales'[Total Revenue]  or  Sales[Total Revenue]
+
+4. Do NOT aggregate (SUM, AVERAGE, MIN, MAX, COUNT, DISTINCTCOUNT) any
+   column tagged [no-aggregate] or [key] in the registry. These are key
+   columns and attribute columns — aggregating them is semantically wrong.
+
+5. Do NOT use SELECTEDMEASURE() unless the registry shows
+   "Calculation groups: YES".
+
+6. Do NOT use DAX UDFs (e.g. MyLib.Function()) unless the registry shows
+   compatibility level >= 1702.
+
+7. Before writing any object reference, verify it appears verbatim in the
+   registry. If you are uncertain, do not write it.
+
+{registry_block}
+"""
+
 
 def _parse_model(model):
     """Shared logic: extract schema and format context string from parsed model JSON."""
@@ -113,7 +159,8 @@ def _parse_model(model):
 
     lines.append("")
     lines.append("=== END OF MODEL ===")
-    return "\n".join(lines), schema
+    model_registry = build_model_registry(model)
+    return "\n".join(lines), schema, model_registry
 
 
 @st.cache_resource
@@ -183,8 +230,22 @@ NEW: <one sentence explaining why no existing measure matches>""",
             return result, None
     return result, None
 
-def generate_dax(user_request, model_context, previous_attempt=None, feedback=None):
-    if previous_attempt and feedback:
+def generate_dax(user_request, model_context, previous_attempt=None, feedback=None, model_registry=None, ref_correction=False):
+    if ref_correction and previous_attempt and feedback:
+        errors = [e.strip() for e in feedback.split(" | ") if e.strip()]
+        errors_text = "\n".join(f"  {i + 1}. {e}" for i, e in enumerate(errors))
+        content = f"""The DAX expression below contains reference errors.
+Correct ONLY the specific objects listed below — do not change the measure name,
+the calculation logic, or any other part of the expression.
+
+EXPRESSION TO CORRECT:
+{previous_attempt}
+
+REFERENCE ERRORS TO FIX:
+{errors_text}
+
+Every corrected reference must appear verbatim in the Model Object Registry."""
+    elif previous_attempt and feedback:
         content = f"""Request: {user_request}
 
 Your previous attempt was:
@@ -193,17 +254,26 @@ Your previous attempt was:
 That attempt failed validation with this feedback:
 {feedback}
 
-Please fix the issue and try again.
-Remember to only use tables and columns that exist in the data model below."""
+Please fix ONLY the specific issues listed above — do not change anything else.
+Every object reference must appear in the Model Object Registry."""
     else:
         content = f"Request: {user_request}"
+
+    if model_registry:
+        registry_block = format_registry_for_prompt(model_registry)
+        constraint_section = _REGISTRY_CONSTRAINT.format(registry_block=registry_block)
+    else:
+        constraint_section = (
+            "\nYou must ONLY use tables and columns that exist in the data model below. "
+            "Do NOT invent table or column names. "
+            "Always fully qualify column references as 'TableName'[ColumnName].\n"
+        )
 
     message = client.messages.create(
         model="claude-sonnet-4-5",
         max_tokens=1024,
         system=f"""You are an expert Power BI DAX developer.
-You must ONLY use tables and columns that exist in the data model.
-Do NOT invent table or column names.
+{constraint_section}
 Respond with ONLY the DAX measure code — no explanations, no markdown, no backticks.
 
 Important rules:
@@ -212,10 +282,10 @@ Important rules:
 - "Number of X by Y" means just count X — Power BI visuals handle the Y breakdown
 - Reuse existing measures from the model where possible
 
-Example output format:
-Total Revenue = SUM(Fact_DailyFlash[TotalRevenue])
+Output format:
+Measure Name = DAX expression
 
-Here is the data model you must use:
+Here is the full data model for additional context:
 
 {model_context}""",
         messages=[{"role": "user", "content": content}]
@@ -262,16 +332,20 @@ Data model for reference:
     )
     return message.content[0].text
 
-def run_agent(user_request, model_context, schema):
+def run_agent(user_request, model_context, schema, model_registry=None):
     max_attempts = 3
+    max_ref_retries = 2
     attempt = 1
+    ref_retry_count = 0
+    ref_correction = False
     previous_dax = None
     previous_feedback = None
     log = []
 
     while attempt <= max_attempts:
         log.append(f"Attempt {attempt} of {max_attempts}...")
-        dax = generate_dax(user_request, model_context, previous_dax, previous_feedback)
+        dax = generate_dax(user_request, model_context, previous_dax, previous_feedback, model_registry=model_registry, ref_correction=ref_correction)
+        ref_correction = False  # reset after each generation
 
         structural_issues = validate_structural(dax)
         if structural_issues:
@@ -282,7 +356,25 @@ def run_agent(user_request, model_context, schema):
             attempt += 1
             continue
 
-        log.append("Structural validation passed.")
+        if model_registry:
+            ref_result = SemanticReferenceValidator(model_registry).validate(dax)
+            if ref_result["warnings"]:
+                for w in ref_result["warnings"]:
+                    log.append(f"Warning: {w}")
+            if not ref_result["passed"]:
+                ref_retry_count += 1
+                if ref_retry_count > max_ref_retries:
+                    log.append(f"Reference errors persist after {max_ref_retries} correction attempt(s) — stopping.")
+                    break
+                feedback = " | ".join(ref_result["errors"])
+                log.append(f"Reference correction {ref_retry_count}/{max_ref_retries}: {feedback}")
+                previous_dax = dax
+                previous_feedback = feedback
+                ref_correction = True
+                attempt += 1
+                continue
+
+        log.append("Structural + reference validation passed.")
         semantic_result = validate_semantic(user_request, dax, model_context)
         log.append(f"Semantic: {semantic_result}")
 
@@ -422,9 +514,10 @@ if st.session_state.sanitise_pending_approval and st.session_state.sanitise_repo
             try:
                 content = st.session_state.sanitised_content
                 content_hash = str(hash(content))
-                model_context, schema = load_model_context_from_string(content_hash, content)
+                model_context, schema, model_registry = load_model_context_from_string(content_hash, content)
                 st.session_state.model_context = model_context
                 st.session_state.schema = schema
+                st.session_state.model_registry = model_registry
                 st.session_state.lineage_graph = lineage.build_graph_from_model_dict(
                     json.loads(content)
                 )
@@ -447,6 +540,7 @@ if "model_context" in st.session_state and st.session_state.model_context:
     try:
         model_context = st.session_state.model_context
         schema = st.session_state.schema
+        model_registry = st.session_state.get("model_registry")
         table_count = len(schema["tables"])
         rel_count = len(schema["relationships"])
         st.success(f"Model loaded — {table_count} tables, {rel_count} relationships.")
@@ -455,7 +549,7 @@ if "model_context" in st.session_state and st.session_state.model_context:
         st.stop()
 elif st.session_state.get("model_path") and os.path.exists(st.session_state.model_path):
     try:
-        model_context, schema = load_model_context_from_path(st.session_state.model_path)
+        model_context, schema, model_registry = load_model_context_from_path(st.session_state.model_path)
         table_count = len(schema["tables"])
         rel_count = len(schema["relationships"])
         st.success(f"Model loaded — {table_count} tables, {rel_count} relationships.")
@@ -545,7 +639,7 @@ with tab_generate:
         else:
             # Run agent
             with st.spinner("Generating and validating DAX..."):
-                dax, attempts, log, success = run_agent(user_request, model_context, schema)
+                dax, attempts, log, success = run_agent(user_request, model_context, schema, model_registry=model_registry)
                 st.session_state.generated_dax = dax
                 st.session_state.agent_log = log
                 st.session_state.generation_success = success
@@ -554,25 +648,36 @@ with tab_generate:
     # Show duplicate warning
     if st.session_state.duplicate_result and st.session_state.duplicate_result.startswith("DUPLICATE") and st.session_state.duplicate_measure:
         st.warning(f"Similar measure found: {st.session_state.duplicate_result}")
+        st.caption("Existing measure from library:")
         st.code(st.session_state.duplicate_measure["dax"], language="dax")
-        if st.button("Generate new measure anyway"):
-            with st.spinner("Generating and validating DAX..."):
-                dax, attempts, log, success = run_agent(
-                    st.session_state.current_request, model_context, schema
-                )
-                st.session_state.generated_dax = dax
-                st.session_state.agent_log = log
-                st.session_state.generation_success = success
-                st.session_state.attempts_taken = attempts
+        st.caption("Choose an action below — no new DAX has been generated yet.")
+        col_use, col_new = st.columns(2)
+        with col_use:
+            if st.button("✅ Use existing measure", type="primary"):
                 st.session_state.duplicate_result = None
                 st.session_state.duplicate_measure = None
+                st.rerun()
+        with col_new:
+            if st.button("🔄 Generate new measure anyway"):
+                with st.spinner("Generating and validating DAX..."):
+                    dax, attempts, log, success = run_agent(
+                        st.session_state.current_request, model_context, schema, model_registry=model_registry
+                    )
+                    st.session_state.generated_dax = dax
+                    st.session_state.agent_log = log
+                    st.session_state.generation_success = success
+                    st.session_state.attempts_taken = attempts
+                    st.session_state.duplicate_result = None
+                    st.session_state.duplicate_measure = None
 
     # Show agent results
     if st.session_state.generated_dax:
-        if st.session_state.agent_log:
-            with st.expander("Agent log", expanded=False):
+        with st.expander(f"Agent log ({len(st.session_state.agent_log)} entries)", expanded=True):
+            if st.session_state.agent_log:
                 for line in st.session_state.agent_log:
                     st.text(line)
+            else:
+                st.warning("Log is empty — duplicate was found and used, or an error occurred before the agent ran.")
 
         if st.session_state.generation_success:
             st.success(f"DAX generated and validated in {st.session_state.attempts_taken} attempt(s).")

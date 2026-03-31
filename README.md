@@ -5,11 +5,14 @@ An AI-powered tool that generates, validates, and manages DAX measures for Power
 ## Features
 
 - **Natural language to DAX** — describe what you want, get valid DAX back
-- **Dual validation** — structural check (syntax) + semantic check (does it answer the request?)
-- **Self-correcting** — retries up to 3 times with its own feedback if validation fails
-- **Duplicate detection** — flags if a similar measure already exists in the library
+- **Model Object Registry** — builds a structured registry of every table, column, and measure from your `.bim` file; the generation prompt is hard-constrained to only reference objects that actually exist
+- **Reference validation** — after generation, programmatically checks every `'Table'[Column]` and `[Measure]` reference against the registry; catches hallucinated names before the Claude semantic review
+- **Semantic warnings** — flags direct aggregation of key or date columns (`summarizeBy=none`) that are almost certainly wrong
+- **Three-stage validation** — structural check → reference check → Claude semantic review; each stage has targeted retry feedback
+- **Self-correcting reference errors** — when a reference error is found, a targeted correction prompt lists each bad object individually; capped at 2 correction attempts before surfacing to the user
+- **Duplicate detection** — flags if a similar measure already exists in the library; choose to use the existing one or generate a new one
+- **Name collision detection** — warns if a generated measure name exactly matches an existing library entry before saving
 - **Measure library** — approved measures are saved and searchable
-- **Model-aware** — reads your `Model.bim` so it only uses tables and columns that actually exist
 - **Model sanitisation** — scans your model file for sensitive data before loading; nothing leaves your machine until you approve
 - **Lineage & impact analysis** — automatically builds a dependency graph on load; select any table or column to see every measure that depends on it
 - **Two interfaces** — Streamlit web UI or CLI
@@ -87,7 +90,7 @@ A simpler version that generates DAX without reading your model file. Useful for
 python model_inspector.py
 ```
 
-Prints a structured summary of your model's tables, columns, and existing measures. Useful for verifying the agent can see your model correctly.
+Prints a structured summary of your model's tables, columns, and existing measures — including each column's data type, whether it is a key, and its `summarizeBy` setting. Useful for verifying the agent can see your model correctly and for diagnosing unexpected validation warnings.
 
 ### View saved measures
 

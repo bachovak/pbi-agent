@@ -172,7 +172,13 @@ Once the browser is open:
    - `average daily rate by room type`
    - `number of bookings this month`
 4. Click **Generate DAX**
-5. The agent will generate and validate the DAX for you. Review it, then click **Approve & Save** to add it to your library, or **Reject** to try again with a different request
+5. **If a similar measure already exists** — the agent will show the existing DAX and ask what you want to do. Click **Use existing measure** to keep it, or **Generate new measure anyway** to create a new one
+6. **Watch the agent log** — an expanded log shows each validation step in real time:
+   - `Structural + reference validation passed.` — all column and measure references exist in your model
+   - `Warning: SEMANTIC WARNING: ...` — the agent noticed something that might be wrong (e.g. aggregating a date or key column) but still proceeded
+   - `Reference correction 1/2: ...` — a bad reference was found and a targeted correction was sent back to Claude
+   - `Semantic: PASS` — Claude's reviewer confirmed the DAX answers your request correctly
+7. Review the generated DAX, then click **Approve & Save** to add it to your library, or **Reject** to try again with a different request
 
 ---
 
@@ -209,6 +215,12 @@ Run `pip install streamlit` and try again.
 
 **"DAX keeps failing validation"**
 Try being more specific in your request. Run `python model_inspector.py` to see the exact table and column names in your model, then use those names directly in your request.
+
+**"The agent says the column doesn't exist and won't generate DAX"**
+The column you asked for genuinely does not exist in your model. Run `python model_inspector.py` to see what columns are available, then rephrase your request using a column name that appears in the list.
+
+**"I see a SEMANTIC WARNING about a date or key column in the log"**
+This is a non-blocking warning — the measure was still generated and validated. It means the DAX is directly aggregating a column that is not designed to be summed (such as a date key or ID). Review the generated DAX carefully before approving it.
 
 **"Failed to parse sanitised model" after approving**
 Turn off the **Remove developer comments** toggle in the sanitisation screen and try loading again.
