@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import anthropic
 import json
 import os
@@ -31,6 +32,134 @@ st.set_page_config(
     page_icon="favicon.svg",
     layout="wide"
 )
+
+# ── CSS / Branding ────────────────────────────────────────────────────────────
+
+st.html("""
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Source+Sans+3:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --colour-primary:    #2A5F8F;
+    --colour-accent:     #C2603A;
+    --colour-dark:       #1A3D5C;
+    --colour-mid:        #5B8DB8;
+    --colour-bg:         #F4F1EB;
+    --colour-card:       #FFFFFF;
+    --colour-text:       #2A3A4A;
+    --colour-text-muted: #6A7E90;
+    --colour-border:     #D9D4C8;
+    --font-heading: 'Playfair Display', Georgia, serif;
+    --font-body:    'Source Sans 3', 'Source Sans Pro', system-ui, sans-serif;
+    --radius: 8px;
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+    --transition: 0.25s ease;
+  }
+
+  /* App background */
+  .stApp { background-color: var(--colour-bg); }
+
+  /* Main content area */
+  section[data-testid="stMain"] { background-color: var(--colour-bg); }
+
+  /* Sidebar */
+  section[data-testid="stSidebar"] {
+    background-color: var(--colour-dark) !important;
+  }
+  section[data-testid="stSidebar"] label,
+  section[data-testid="stSidebar"] p,
+  section[data-testid="stSidebar"] span,
+  section[data-testid="stSidebar"] div { color: rgba(255,255,255,0.85); }
+  section[data-testid="stSidebar"] h1,
+  section[data-testid="stSidebar"] h2,
+  section[data-testid="stSidebar"] h3 { color: #fff; }
+  section[data-testid="stSidebar"] .stCaption,
+  section[data-testid="stSidebar"] .stCaption p { color: rgba(255,255,255,0.55) !important; }
+  /* Inputs inside sidebar keep dark text on light background */
+  section[data-testid="stSidebar"] input,
+  section[data-testid="stSidebar"] textarea {
+    color: var(--colour-text) !important;
+    background-color: #fff !important;
+  }
+  section[data-testid="stSidebar"] input::placeholder,
+  section[data-testid="stSidebar"] textarea::placeholder {
+    color: var(--colour-text-muted) !important;
+  }
+
+  /* Typography */
+  body, li, label, .stMarkdown {
+    font-family: var(--font-body);
+    color: var(--colour-text);
+  }
+  h1, h2, h3, h4 {
+    font-family: var(--font-heading);
+    color: var(--colour-dark);
+  }
+
+  /* Primary buttons */
+  button[data-testid="baseButton-primary"] {
+    background-color: #2A5F8F !important;
+    border: none !important;
+    border-radius: 100px !important;
+    color: #fff !important;
+    font-weight: 600;
+    transition: all 0.25s ease;
+  }
+  button[data-testid="baseButton-primary"]:hover {
+    background-color: #5B8DB8 !important;
+    color: #fff !important;
+  }
+
+  /* Secondary buttons */
+  button[data-testid="baseButton-secondary"] {
+    border-color: #D9D4C8 !important;
+    border-radius: 100px !important;
+    color: #2A5F8F !important;
+    font-weight: 600;
+    transition: all 0.25s ease;
+  }
+  button[data-testid="baseButton-secondary"]:hover {
+    border-color: #2A5F8F !important;
+    color: #1A3D5C !important;
+  }
+
+  /* Text inputs / text areas */
+  .stTextInput input, .stTextArea textarea {
+    border-color: var(--colour-border);
+    border-radius: var(--radius);
+    font-family: var(--font-body);
+  }
+  .stTextInput input:focus, .stTextArea textarea:focus {
+    border-color: var(--colour-primary);
+    box-shadow: 0 0 0 2px rgba(42,95,143,0.15);
+  }
+
+  /* Divider */
+  hr { border-color: var(--colour-border); }
+
+  /* Links */
+  a { color: var(--colour-primary); }
+  a:hover { color: var(--colour-mid); }
+
+</style>
+""")
+
+# Inject button text colour via parent-document script (st.html is sandboxed)
+components.html("""
+<script>
+  const s = window.parent.document.createElement('style');
+  s.textContent = `
+    button[data-testid="baseButton-primary"],
+    button[data-testid="baseButton-primary"] p,
+    button[data-testid="baseButton-primary"] span {
+      color: #fff !important;
+    }
+  `;
+  window.parent.document.head.appendChild(s);
+</script>
+""", height=0)
 
 # ── Session State Init ────────────────────────────────────────────────────────
 
@@ -776,6 +905,6 @@ with tab_impact:
                     rel = rel_label.get(item["relationship"], item["relationship"])
                     st.markdown(
                         f"{indent}{icon} **{item['name']}** "
-                        f"<span style='color:#78716C'>({item['type']} · {rel})</span>",
+                        f"<span style='color:#6A7E90'>({item['type']} · {rel})</span>",
                         unsafe_allow_html=True,
                     )
