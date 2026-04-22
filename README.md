@@ -2,6 +2,8 @@
 
 An AI-powered tool that generates, validates, and manages DAX measures for Power BI models using Claude. Describe the measure you need in plain English — the agent generates DAX, validates it structurally and semantically, and saves approved measures to a reusable library.
 
+> 📰 Featured in [SQLBI Newsletter #319](https://www.sqlbi.com/nl/v/2466/) · April 2026
+
 ## Features
 
 - **Natural language to DAX** — describe what you want, get valid DAX back
