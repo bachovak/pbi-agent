@@ -151,7 +151,9 @@ Save the file and close it.
 
 ## Step 8 — Run the agent
 
-In your terminal (make sure you are in the `pbi-agent` folder), run:
+**Windows (easiest):** open the `pbi-agent` folder in File Explorer and double-click **`start.bat`**. A terminal window will appear and your browser will open automatically.
+
+**Terminal (all platforms):** make sure you are in the `pbi-agent` folder, then run:
 
 ```
 streamlit run app.py
@@ -210,8 +212,8 @@ Open your `.env` file and check that the key is pasted correctly with no extra s
 **"Cannot find model file" or model not loading**
 Check that the path in `BIM_PATH` matches exactly where you saved your `Model.bim` file. Copy the path directly from File Explorer to avoid typos.
 
-**"Streamlit command not found"**
-Run `pip install streamlit` and try again.
+**"Streamlit command not found" or `start.bat` closes immediately with an error**
+Run `pip install streamlit` and try again. If the error persists, open a terminal, navigate to the `pbi-agent` folder, and run `python -m streamlit run app.py` instead.
 
 **"DAX keeps failing validation"**
 Try being more specific in your request. Run `python model_inspector.py` to see the exact table and column names in your model, then use those names directly in your request.
