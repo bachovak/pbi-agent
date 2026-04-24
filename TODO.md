@@ -124,6 +124,18 @@ Update all imports in `dax_agent.py` and `app.py` from `sanitiser` to `validator
 
 ---
 
+### ✅ T1-H · Add DAX best practices anti-pattern rules to System B prompt *(done)*
+- **Effort:** 🟢 LOW — system prompt addition + reference doc
+- **Improvement:** 🔴 HIGH — prevents a broad class of incorrect patterns (wrong division, BLANK conversion, FILTER misuse, SELECTEDVALUE misuse, etc.)
+- **What was done:**
+  - Added condensed 11-rule `_DAX_BEST_PRACTICES` block to System B system prompt in `dax_agent.py` and `app.py`
+  - Full sourced reference (25 rules, citations) saved to `docs/DAX-best-practices.md`
+  - Rules sourced from Microsoft Learn, SQLBI, Tabular Editor BPA, and DAX Patterns
+- **Files:** `dax_agent.py`, `app.py`, `docs/DAX-best-practices.md` (new)
+- **Depends on:** nothing
+
+---
+
 ## Tier 2 — Medium Effort, High Improvement
 
 ### ✅ T2-A · Upgrade System A (model_inspector.py) to emit a structured model_registry JSON *(done)*

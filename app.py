@@ -229,6 +229,46 @@ Measures use a simple assignment: Measure Name = <expression>
 Never wrap a measure in a DEFINE block.
 """
 
+# Condensed DAX anti-pattern rules injected into every System B call.
+# Full sourced reference: docs/DAX-best-practices.md
+_DAX_BEST_PRACTICES = """
+## DAX BEST PRACTICES — PATTERNS TO FOLLOW
+
+1. DIVISION: Use DIVIDE([A], [B]) — not [A]/[B] or IFERROR([A]/[B], BLANK()).
+   Exception: [x] / constant (e.g. / 100) is fine — DIVIDE is unnecessary for a guaranteed non-zero constant.
+
+2. TYPE CASTS: Never wrap a result in INT(), TEXT(), or FLOAT() to "set the type".
+   Measure types are inferred automatically. Use INT() only when you specifically need floor (truncate toward zero) behaviour.
+   DISTINCTCOUNT, COUNT, COUNTROWS already return whole numbers — do not wrap them in INT().
+
+3. BLANK: Do not convert BLANK to zero (e.g. IF(ISBLANK([x]), 0, [x])) unless the user explicitly asks for it.
+   BLANK is the correct result for missing or inapplicable data.
+
+4. SELECTEDVALUE: Use SELECTEDVALUE(col) not IF(HASONEVALUE(col), VALUES(col)).
+   Use SELECTEDVALUE(col, alternate) not IF(HASONEVALUE(col), SELECTEDVALUE(col), alternate).
+   Never compare VALUES(col) directly to a scalar — use SELECTEDVALUE(col) = "value" instead.
+
+5. VAR: Extract any sub-expression used more than once into a VAR. Use VAR instead of EARLIER() in all cases.
+
+6. FILTER in CALCULATE: For simple column comparisons use a Boolean filter arg:
+      CORRECT: CALCULATE([x], 'Table'[col] = "val")
+      WRONG:   CALCULATE([x], FILTER('Table', 'Table'[col] = "val"))
+   When FILTER is genuinely required (e.g. condition references a measure), scope to VALUES(col) not the full table.
+
+7. COUNTROWS: CALCULATE(COUNTROWS(T), filter) not COUNTROWS(FILTER(T, condition)).
+
+8. SUMMARIZE: Never add aggregation expressions inside SUMMARIZE.
+   Use ADDCOLUMNS(SUMMARIZE(T, col), "agg", CALCULATE(aggregation)) instead.
+
+9. COLUMN REFS: Always fully qualify — 'Table'[Column] or Table[Column]. Never bare [Column] alone in aggregations.
+
+10. VAR/RETURN: Use VAR/RETURN for all multi-step logic. Never chain expressions with semicolons.
+
+11. TIME INTELLIGENCE: Requires a dedicated marked Date table. Do not nest time intelligence functions.
+    Use DATESYTD/DATESMTD/DATESQTD instead of hand-crafted FILTER date ranges.
+    DATESYTD fiscal year-end must be a string literal (e.g. "6/30"), not a measure reference.
+"""
+
 # ── Model Inspector ───────────────────────────────────────────────────────────
 
 # Injected into System B's prompt when a model registry is available.
@@ -445,6 +485,7 @@ Every object reference must appear in the Model Object Registry."""
         system=f"""You are an expert Power BI DAX developer.
 {constraint_section}
 {_DAX_SYNTAX_REFERENCE}
+{_DAX_BEST_PRACTICES}
 Respond with ONLY the DAX measure code — no explanations, no markdown, no backticks.
 
 Important rules:
