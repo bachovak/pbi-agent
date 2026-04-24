@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 import sanitiser
 import lineage
 from model_inspector import build_model_registry, format_registry_for_prompt
-from sanitiser import SemanticReferenceValidator
+from validator import SemanticReferenceValidator
 
 load_dotenv()
 
@@ -187,6 +187,47 @@ if "lineage_graph" not in st.session_state:
     st.session_state.lineage_graph = None
 if "model_registry" not in st.session_state:
     st.session_state.model_registry = None
+
+# ── DAX Syntax Reference (T1-G) ──────────────────────────────────────────────
+
+# Injected into every System B call so Claude uses correct Power BI type names
+# and UDF syntax regardless of what its general training data suggests.
+_DAX_SYNTAX_REFERENCE = """
+## DAX SYNTAX REFERENCE
+
+### Power BI data type names
+When defining UDF parameter or return types, use ONLY these exact strings:
+
+  CORRECT     WRONG — never use these
+  Int64       Integer, Int
+  Double      Float
+  String      Text
+  DateTime    Date
+  Boolean     Bool
+  Decimal     (no common mistake)
+  Numeric     Number
+  Variant     Any
+
+### DAX UDF syntax (compatibility level >= 1702 only)
+Use the => arrow operator to introduce the function body.
+RETURN at the top level is wrong for UDF definitions.
+
+  CORRECT:
+  DEFINE
+    FUNCTION MyLib.CalcTax([amount] AS Double, [rate] AS Double)
+    RETURNS Double
+    => [amount] * [rate]
+
+  WRONG:
+  DEFINE
+    FUNCTION MyLib.CalcTax([amount] AS Float, [rate] AS Float)
+    RETURNS Float
+    RETURN [amount] * [rate]
+
+The DEFINE block is only valid in DAX Query View.
+Measures use a simple assignment: Measure Name = <expression>
+Never wrap a measure in a DEFINE block.
+"""
 
 # ── Model Inspector ───────────────────────────────────────────────────────────
 
@@ -403,6 +444,7 @@ Every object reference must appear in the Model Object Registry."""
         max_tokens=1024,
         system=f"""You are an expert Power BI DAX developer.
 {constraint_section}
+{_DAX_SYNTAX_REFERENCE}
 Respond with ONLY the DAX measure code — no explanations, no markdown, no backticks.
 
 Important rules:

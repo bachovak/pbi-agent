@@ -133,7 +133,8 @@ This is optional — you can also copy generated DAX manually into Tabular Edito
 | File | Purpose |
 |---|---|
 | `app.py` | Streamlit web UI |
-| `sanitiser.py` | Model sanitisation module (called by `app.py`) |
+| `sanitiser.py` | PII redaction of model.bim before sharing with the AI (called by `app.py`) |
+| `validator.py` | DAX output validation — type-name check, semantic reference validation |
 | `dax_agent.py` | Full CLI agent (model-aware, with library) |
 | `hello_agent.py` | Simple CLI agent (no model context) |
 | `model_inspector.py` | Reads and prints your model schema |

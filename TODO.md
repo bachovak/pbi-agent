@@ -83,8 +83,44 @@ Tasks are sorted: **lowest effort + highest improvement first**.
   - Before accepting a generated measure, check if its name already exists in `measure_library.json`
   - If a collision is found, surface it as a warning (not a hard block): "Measure '[Name]' already exists. Confirm this is a replacement."
   - Sourced from `connect-pbid` SKILL.md "check for duplicate measure names across tables"
-- **Files:** `sanitiser.py`
+- **Files:** `sanitiser.py` *(DAX validation portion to be extracted to `validator.py` as part of T1-G)*
 - **Depends on:** nothing
+
+---
+
+### ✅ T1-G · Add DAX Syntax Reference Layer (type names + UDF syntax) *(done)*
+
+- **Effort:** 🟢 LOW — system prompt edit (A) + create `validator.py` by extracting from `sanitiser.py` and adding ~30 lines (B)
+- **Improvement:** 🔴 HIGH — closes a confirmed gap: Claude emits wrong type names and outdated UDF syntax from general training
+
+#### A — System prompt enrichment (`dax_agent.py`)
+
+Add an explicit DAX Syntax Reference block to the System B system prompt covering:
+
+- **Correct Power BI data type subtype names:** `Int64`, `Decimal`, `Double`, `String`, `DateTime`, `Boolean`, `Numeric`, `Variant`
+- **Common wrong names to avoid:** `Integer` → use `Int64`; `Text` → use `String`; `Float` → use `Double`; `Date` → use `DateTime`
+- **Correct UDF syntax:** uses the `=>` arrow operator, not a `RETURN` keyword; parameter type hints follow a specific format; `DEFINE` block is only valid in DAX Query View — not in measures
+
+#### B — Extract validation into `validator.py` and extend with type-name check
+
+Create `validator.py` by moving `SemanticReferenceValidator`, `validate_generated_dax`, and the measure name collision check out of `sanitiser.py` (which should handle only PII redaction). Then extend the validator with a type-name pre-check:
+
+- Before semantic validation runs, scan the generated DAX for known wrong type strings
+- Return a structured error naming the wrong type and its correct replacement
+- Feed this error into the existing B→D→B retry loop (T2-C) with an actionable correction prompt
+
+Update all imports in `dax_agent.py` and `app.py` from `sanitiser` to `validator` for the DAX validation functions.
+
+#### Sources
+
+- [DAX UDF overview and syntax](https://learn.microsoft.com/en-us/power-bi/transform-model/desktop-user-defined-functions-overview)
+- [DAX UDF best practices and type hints](https://learn.microsoft.com/en-us/dax/best-practices/dax-user-defined-functions)
+- [Power BI data types reference](https://learn.microsoft.com/en-us/power-bi/connect-data/desktop-data-types)
+- [Tabular Editor UDF tutorial](https://docs.tabulareditor.com/te3/tutorials/udfs.html)
+- [Power BI blog: DAX UDFs — Code Once, Reuse Everywhere](https://powerbi.microsoft.com/en-us/blog/dax-udfs-code-once-reuse-everywhere-preview/)
+
+- **Files:** `dax_agent.py`, `app.py`, `sanitiser.py` (extraction), `validator.py` (new)
+- **Depends on:** T2-C (retry loop must exist for Part B to fire corrections)
 
 ---
 
@@ -103,11 +139,11 @@ Tasks are sorted: **lowest effort + highest improvement first**.
 
 ---
 
-### ✅ T2-B · Add SemanticReferenceValidator to System C (sanitiser.py) *(done)*
+### ✅ T2-B · Add SemanticReferenceValidator to System C *(done — currently in `sanitiser.py`, to be extracted to `validator.py` in T1-G)*
 - **Effort:** 🟡 MED — implement the reference resolver class (~120 lines of Python)
 - **Improvement:** 🔴 HIGH — closes the core gap: catches references to tables/columns/measures that don't exist, even when DAX syntax is valid
 - **What to do:**
-  - Add `SemanticReferenceValidator` class to `sanitiser.py` (full implementation in `docs/ANALYSIS-validation-patterns.md`)
+  - Add `SemanticReferenceValidator` class to `sanitiser.py` (full implementation in `docs/ANALYSIS-validation-patterns.md`) *(to be moved to `validator.py` in T1-G)*
   - Run it as the final step of System C's validation pipeline, after existing structural checks
   - Returns `{"passed": bool, "errors": [...], "warnings": [...]}` — block on errors, surface warnings
   - Checks: `'Table'[Column]` existence, `[Measure]` existence, aggregation of `summarizeBy=none` columns, SELECTEDMEASURE without calc groups
@@ -179,7 +215,7 @@ Tasks are sorted: **lowest effort + highest improvement first**.
   - Add `"depends_on": ["[Total Revenue]", "Date[Date]"]` per measure in the registry
   - Surface in System C: warn if a generated measure references a measure whose own expression has errors
   - Sourced from `bpa-rules` SKILL.md `DependsOn.Any()` and `ReferencedBy.Count` patterns
-- **Files:** `lineage.py`, `model_inspector.py`, `sanitiser.py`
+- **Files:** `lineage.py`, `model_inspector.py`, `validator.py`
 - **Depends on:** T2-A
 
 ---
@@ -195,7 +231,7 @@ Tasks are sorted: **lowest effort + highest improvement first**.
 | T2-A · Upgrade model_inspector → model_registry | MED | HIGH | 5 ← unblocks T1-A/B |
 | T1-A · Reference constraint in System B prompt | LOW | HIGH | 6 ← needs T2-A |
 | T1-B · Wire registry into System B at runtime | LOW | HIGH | 7 ← needs T2-A |
-| T2-B · SemanticReferenceValidator in sanitiser.py | MED | HIGH | 8 |
+| T2-B · SemanticReferenceValidator (→ validator.py in T1-G) | MED | HIGH | 8 |
 | T2-C · B→D→B correction retry loop | MED | MED | 9 |
 | T3-A · Relationship awareness in prompts | MED | MED | 10 |
 | T3-B · System D standalone validator agent | HIGH | HIGH | 11 |

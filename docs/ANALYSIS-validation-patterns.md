@@ -368,7 +368,7 @@ system_prompt = SYSTEM_B_BASE_PROMPT.replace(
 
 ---
 
-### System C — SemanticReferenceValidator (add to sanitiser.py)
+### System C — SemanticReferenceValidator (add to validator.py)
 
 ```python
 import re
@@ -531,7 +531,7 @@ def validate_generated_dax(
 **Usage in pipeline:**
 ```python
 # In dax_agent.py, after System B generates DAX:
-from sanitiser import validate_generated_dax
+from validator import validate_generated_dax
 
 validation = validate_generated_dax(
     dax_expression=generated_dax,
@@ -645,7 +645,7 @@ System D (new — optional but recommended)
     ▼
 System C
   ├── Existing structural checks (syntax, format)
-  ├── NEW: SemanticReferenceValidator (sanitiser.py)
+  ├── NEW: SemanticReferenceValidator (validator.py)
   │   └── Checks all references against model_registry
   ├── Amendment protection (existing measure collision)
   └── Returns: approved DAX or rejection with reasons
