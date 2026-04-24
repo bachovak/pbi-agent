@@ -64,6 +64,9 @@ Export it from Tabular Editor: **File → Save As** and save as `Model.bim`. Poi
 
 ### Streamlit web UI (recommended)
 
+**Windows:** double-click `start.bat` in the project folder.
+
+**Terminal:**
 ```bash
 streamlit run app.py
 ```
@@ -133,6 +136,7 @@ This is optional — you can also copy generated DAX manually into Tabular Edito
 | File | Purpose |
 |---|---|
 | `app.py` | Streamlit web UI |
+| `start.bat` | Windows launcher — double-click to start the web UI |
 | `sanitiser.py` | PII redaction of model.bim before sharing with the AI (called by `app.py`) |
 | `validator.py` | DAX output validation — type-name check, semantic reference validation |
 | `dax_agent.py` | Full CLI agent (model-aware, with library) |
