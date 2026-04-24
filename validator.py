@@ -133,6 +133,19 @@ class SemanticReferenceValidator:
         dax_clean = re.sub(r"//[^\n]*", "", dax_expression)
         dax_clean = re.sub(r"/\*.*?\*/", "", dax_clean, flags=re.DOTALL)
 
+        # UDF detection — if this is a UDF definition, skip all object reference
+        # checks (steps 1–3). UDF parameter names are not model objects and must
+        # not be validated against the registry. Fall through to compat checks only.
+        is_udf = bool(re.search(r"\bFUNCTION\b", dax_clean, re.IGNORECASE)) and "=>" in dax_clean
+        if is_udf:
+            compat = self.registry.get("compatibility_level", 0)
+            if compat > 0 and compat < 1702:
+                warnings.append(
+                    f"COMPATIBILITY: Model is at level {compat}. DAX UDFs "
+                    f"require compatibility level 1702+."
+                )
+            return {"passed": len(errors) == 0, "errors": errors, "warnings": warnings}
+
         # Track which non-additive refs have already generated a warning to
         # avoid duplicate entries when the same column appears multiple times.
         warned_agg_refs: set = set()

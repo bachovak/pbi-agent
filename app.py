@@ -209,24 +209,25 @@ When defining UDF parameter or return types, use ONLY these exact strings:
   Variant     Any
 
 ### DAX UDF syntax (compatibility level >= 1702 only)
-Use the => arrow operator to introduce the function body.
-RETURN at the top level is wrong for UDF definitions.
+UDFs use colon-typed parameters and the => arrow operator.
+Parameters are plain names — no brackets, no AS keyword, no RETURNS keyword.
 
   CORRECT:
-  DEFINE
-    FUNCTION MyLib.CalcTax([amount] AS Double, [rate] AS Double)
-    RETURNS Double
-    => [amount] * [rate]
+  FUNCTION CalcTax = (
+      amount: Double,
+      rate: Double
+  ) =>
+      amount * rate
 
-  WRONG:
-  DEFINE
-    FUNCTION MyLib.CalcTax([amount] AS Float, [rate] AS Float)
-    RETURNS Float
-    RETURN [amount] * [rate]
+  WRONG — do not use any of these patterns:
+  FUNCTION CalcTax([amount] AS Double, [rate] AS Double)  -- brackets and AS are wrong
+  RETURNS Double                                           -- RETURNS keyword does not exist in DAX UDFs
+  RETURN amount * rate                                     -- RETURN at top level is wrong
 
-The DEFINE block is only valid in DAX Query View.
-Measures use a simple assignment: Measure Name = <expression>
-Never wrap a measure in a DEFINE block.
+Valid parameter types: Int64, Decimal, Double, String, DateTime, Boolean, Numeric, Variant
+UDF parameters use plain names: amount, rate, price — not [amount], [rate], [price]
+
+UDFs are defined in DAX Query View, not as standard measures.
 """
 
 # Condensed DAX anti-pattern rules injected into every System B call.
@@ -511,13 +512,14 @@ Here is the full data model for additional context:
 
 def validate_structural(dax):
     issues = []
+    is_udf = "FUNCTION" in dax.upper() and "=>" in dax
     if "=" not in dax:
         issues.append("Missing measure name — no equals sign found")
     if len(dax.strip()) < 10:
         issues.append("Output is too short — may not be valid DAX")
     table_functions = ["COUNTROWS", "SUMMARIZE", "FILTER", "ALL", "ALLEXCEPT", "VALUES", "DISTINCT"]
     uses_table_function = any(fn in dax.upper() for fn in table_functions)
-    if not uses_table_function and ("[" not in dax or "]" not in dax):
+    if not is_udf and not uses_table_function and ("[" not in dax or "]" not in dax):
         issues.append("No column references found — may be incomplete")
     return issues
 
@@ -527,6 +529,13 @@ def validate_semantic(user_request, dax, model_context):
         max_tokens=512,
         system=f"""You are a Power BI DAX code reviewer.
 Check if the DAX correctly answers the request using only valid columns from the model.
+
+DAX UDF syntax reference — use this when reviewing UDF output:
+- Parameters use colon notation: paramName: DataType (not AS keyword, not square brackets)
+- There is no RETURNS keyword in DAX UDFs
+- The => arrow introduces the function body
+- CORRECT: FUNCTION Name = (amount: Double, rate: Double) => amount * rate
+- WRONG:   FUNCTION Name([amount] AS Double) RETURNS Double => [amount] * rate
 
 Important rules:
 - In Power BI, "by category" or "by dimension" breakdowns are handled in visuals, not in measures
